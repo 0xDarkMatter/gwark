@@ -218,7 +218,7 @@ async def search_emails(
 
         # Batch read email details (chunk into groups of 50)
         # Reduce concurrency to avoid SSL errors
-        batch_ops = BatchOperations(client=client, max_concurrent=3)
+        batch_ops = BatchOperations(client=client, max_concurrent=1)
 
         message_ids = [m["id"] for m in messages]
         all_successful = {}
