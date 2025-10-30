@@ -200,6 +200,7 @@ async def search_emails(
     account_id: str = "primary",
     output_format: str = "json",
     detail_level: str = "summary",
+    show_preview: bool = False,
 ) -> None:
     """Search and export Gmail emails based on criteria.
 
@@ -214,6 +215,7 @@ async def search_emails(
         account_id: Gmail account ID
         output_format: Output format (json, csv, text, markdown)
         detail_level: Detail level - "summary" (fast, metadata only), "full" (slow, includes body/attachments)
+        show_preview: Show email snippet/preview in summary mode (markdown only)
     """
     print_header("Gmail Email Search")
 
@@ -432,8 +434,12 @@ async def search_emails(
 
                 if detail_level == "summary":
                     # Compact table format for summary mode
-                    f.write("| Date | From → To | Subject | Link |\n")
-                    f.write("|------|-----------|---------|------|\n")
+                    if show_preview:
+                        f.write("| Date | From → To | Subject | Preview | Link |\n")
+                        f.write("|------|-----------|---------|---------|------|\n")
+                    else:
+                        f.write("| Date | From → To | Subject | Link |\n")
+                        f.write("|------|-----------|---------|------|\n")
 
                     for email in emails:
                         # Format date
@@ -456,9 +462,16 @@ async def search_emails(
                         gmail_url = f"https://mail.google.com/mail/u/0/#all/{email['id']}"
 
                         # Write table row
-                        # Escape pipe characters in subject
+                        # Escape pipe characters in subject and snippet
                         safe_subject = email['subject'].replace('|', '\\|')
-                        f.write(f"| {short_date} | {direction} | {safe_subject} | [View]({gmail_url}) |\n")
+
+                        if show_preview:
+                            # Truncate snippet to ~100 chars for preview column
+                            snippet = email['snippet'][:100] + "..." if len(email['snippet']) > 100 else email['snippet']
+                            safe_snippet = snippet.replace('|', '\\|').replace('\n', ' ')
+                            f.write(f"| {short_date} | {direction} | {safe_subject} | {safe_snippet} | [View]({gmail_url}) |\n")
+                        else:
+                            f.write(f"| {short_date} | {direction} | {safe_subject} | [View]({gmail_url}) |\n")
 
                 else:
                     # Detailed format for full mode
@@ -504,6 +517,9 @@ def main() -> int:
 Examples:
   # Quick summary search (fast, metadata only)
   python scripts/email_search.py --domain grandprix.com.au --days-back 180
+
+  # Summary with preview snippets
+  python scripts/email_search.py --domain grandprix.com.au --format markdown --show-preview
 
   # Full detail search (slow, includes body and attachments)
   python scripts/email_search.py --domain grandprix.com.au --detail-level full
@@ -552,6 +568,11 @@ Examples:
         default="summary",
         help="Detail level: 'summary' (fast, metadata only) or 'full' (slow, includes body/attachments) (default: summary)",
     )
+    parser.add_argument(
+        "--show-preview",
+        action="store_true",
+        help="Show email snippet/preview in summary mode (markdown format only)",
+    )
 
     # Account
     parser.add_argument(
@@ -579,6 +600,7 @@ Examples:
                 account_id=args.account_id,
                 output_format=args.format,
                 detail_level=args.detail_level,
+                show_preview=args.show_preview,
             )
         )
         return 0
