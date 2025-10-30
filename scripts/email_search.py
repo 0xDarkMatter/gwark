@@ -289,8 +289,12 @@ async def search_emails(
         # Export results
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+        # Create reports directory if it doesn't exist
+        reports_dir = Path("reports")
+        reports_dir.mkdir(exist_ok=True)
+
         if output_format == "json":
-            output_file = f"email_search_{timestamp}.json"
+            output_file = reports_dir / f"email_search_{timestamp}.json"
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(
                     {
@@ -307,7 +311,7 @@ async def search_emails(
         elif output_format == "csv":
             import csv
 
-            output_file = f"email_search_{timestamp}.csv"
+            output_file = reports_dir / f"email_search_{timestamp}.csv"
             with open(output_file, "w", encoding="utf-8", newline="") as f:
                 writer = csv.DictWriter(
                     f,
@@ -342,7 +346,7 @@ async def search_emails(
                     )
 
         elif output_format == "text":
-            output_file = f"email_search_{timestamp}.txt"
+            output_file = reports_dir / f"email_search_{timestamp}.txt"
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(f"Email Search Results\n")
                 f.write(f"Query: {search_query}\n")
