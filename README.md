@@ -75,6 +75,91 @@ Add to your MCP client configuration (e.g., Claude Desktop):
 }
 ```
 
+## Email Search Utility
+
+A standalone command-line tool for searching and exporting Gmail emails with token-efficient operation.
+
+### Features
+
+- **Token-efficient summary mode** (default) - Uses Gmail API `metadata` format for fast searches
+- **Markdown table output** - Compact one-email-per-line format with clickable Gmail links
+- **Optional preview snippets** - Show ~100 char email previews in summary tables
+- **Full detail mode** - Includes complete email bodies and attachments when needed
+- **Multiple export formats** - JSON, CSV, Text, Markdown
+- **Smart name extraction** - Automatically parses names from email addresses
+- **Flexible filtering** - Search by domain, sender, recipient, subject, or custom query
+
+### Quick Examples
+
+```bash
+# Quick summary search (fast, metadata only)
+python scripts/email_search.py --domain example.com --format markdown
+
+# Summary with preview snippets
+python scripts/email_search.py --domain example.com --format markdown --show-preview
+
+# Full detail search (includes bodies/attachments)
+python scripts/email_search.py --domain example.com --detail-level full --format markdown
+
+# Export to CSV for analysis
+python scripts/email_search.py --sender john@example.com --format csv --days-back 30
+
+# Custom Gmail query with attachments
+python scripts/email_search.py --query "has:attachment larger:5M" --days-back 60
+```
+
+### Output Formats
+
+#### Summary Mode (Default - Fast)
+- Uses Gmail API `metadata` format
+- Includes: subject, from, to, date, Gmail snippet
+- No email bodies or attachment details
+- **Perfect for quick email scanning**
+
+#### Full Mode (Slower)
+- Uses Gmail API `full` format
+- Includes: everything from summary + full email body + attachment details
+- Use when you need complete email content
+
+#### Markdown Table Format
+```markdown
+| Date | From → To | Subject | Link |
+|------|-----------|---------|------|
+| 30/10/2025 | John Doe → Jane Smith | Project Update | [View](gmail-link) |
+```
+
+With `--show-preview`:
+```markdown
+| Date | From → To | Subject | Preview | Link |
+|------|-----------|---------|---------|------|
+| 30/10/2025 | John Doe → Jane Smith | Project Update | Thanks for the update on the project... | [View](gmail-link) |
+```
+
+### All Options
+
+```bash
+# Search filters
+--domain DOMAIN              # Domain to search (e.g., 'example.com')
+--sender EMAIL               # Sender email address
+--recipient EMAIL            # Recipient email address
+--subject TEXT               # Subject line search term
+--query QUERY                # Raw Gmail query (overrides other filters)
+
+# Date range
+--days-back N                # Days to look back (default: 180)
+
+# Output options
+--max-results N              # Maximum results (default: 500)
+--format FORMAT              # json, csv, text, markdown (default: json)
+--detail-level LEVEL         # summary (fast) or full (slow) (default: summary)
+--show-preview               # Show email snippets in markdown tables
+
+# Account
+--account-id ID              # Gmail account ID (default: primary)
+```
+
+Results are saved to the `reports/` directory with timestamps.
+
 ## Available Tools
 
 ### Search & Read
