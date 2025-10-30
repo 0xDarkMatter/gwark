@@ -17,8 +17,23 @@ from typing import Optional
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    env_path = project_root / ".env"
+    load_dotenv(dotenv_path=env_path)
+except ImportError:
+    pass
+
 from gmail_mcp.gmail import GmailClient, GmailOperations
 from gmail_mcp.gmail.batch import BatchOperations
+
+# Import summarizer
+try:
+    from email_summarizer import batch_summarize_emails
+    SUMMARIZER_AVAILABLE = True
+except ImportError:
+    SUMMARIZER_AVAILABLE = False
 
 
 def print_header(text: str) -> None:
@@ -201,6 +216,7 @@ async def search_emails(
     output_format: str = "json",
     detail_level: str = "summary",
     show_preview: bool = False,
+    summarize: bool = False,
 ) -> None:
     """Search and export Gmail emails based on criteria.
 
@@ -216,8 +232,20 @@ async def search_emails(
         output_format: Output format (json, csv, text, markdown)
         detail_level: Detail level - "summary" (fast, metadata only), "full" (slow, includes body/attachments)
         show_preview: Show email snippet/preview in summary mode (markdown only)
+        summarize: Generate AI summaries using Claude (requires full detail level)
     """
     print_header("Gmail Email Search")
+
+    # Handle summarization requirements
+    if summarize:
+        if not SUMMARIZER_AVAILABLE:
+            print("[ERROR] Summarization requires 'anthropic' package")
+            print("[INFO] Install with: pip install anthropic")
+            return
+        # Summarization requires full email bodies
+        if detail_level != "full":
+            print_info("Summarization enabled - switching to 'full' detail level")
+            detail_level = "full"
 
     # Build search query
     if query:
@@ -316,6 +344,15 @@ async def search_emails(
 
         if batch_results["failed"]:
             print_info(f"Failed to fetch {len(batch_results['failed'])} emails")
+
+        # Generate AI summaries if requested
+        if summarize and emails:
+            print_info("Generating AI summaries...")
+            try:
+                emails = batch_summarize_emails(emails, batch_size=10)
+                print_success("AI summaries generated")
+            except Exception as e:
+                print(f"[ERROR] Failed to generate summaries: {e}")
 
         # Display summary
         print_header(f"EMAIL INDEX ({len(emails)} emails)")
@@ -429,75 +466,67 @@ async def search_emails(
                 f.write(f"**Query:** `{search_query}`  \n")
                 f.write(f"**Date:** {datetime.now().isoformat()}  \n")
                 f.write(f"**Total Results:** {len(emails)}  \n")
-                f.write(f"**Detail Level:** {detail_level}  \n\n")
-                f.write("---\n\n")
+                if summarize:
+                    f.write(f"**AI Summaries:** Enabled (Claude Haiku)  \n")
+                f.write("\n---\n\n")
 
-                if detail_level == "summary":
-                    # Compact table format for summary mode
-                    if show_preview:
-                        f.write("| Date | From → To | Subject | Preview | Link |\n")
-                        f.write("|------|-----------|---------|---------|------|\n")
-                    else:
-                        f.write("| Date | From → To | Subject | Link |\n")
-                        f.write("|------|-----------|---------|------|\n")
-
-                    for email in emails:
-                        # Format date
-                        short_date = format_short_date(email['date'])
-
-                        # Extract names
-                        from_name = extract_name(email['from'])
-
-                        # Handle multiple recipients
-                        to_addresses = email['to'].split(',')
-                        to_names = [extract_name(addr.strip()) for addr in to_addresses[:3]]  # Max 3
-                        to_text = ", ".join(to_names)
-                        if len(to_addresses) > 3:
-                            to_text += f" +{len(to_addresses) - 3}"
-
-                        # Build from/to column
-                        direction = f"{from_name} → {to_text}"
-
-                        # Gmail web URL
-                        gmail_url = f"https://mail.google.com/mail/u/0/#all/{email['id']}"
-
-                        # Write table row
-                        # Escape pipe characters in subject and snippet
-                        safe_subject = email['subject'].replace('|', '\\|')
-
-                        if show_preview:
-                            # Truncate snippet to ~100 chars for preview column
-                            snippet = email['snippet'][:100] + "..." if len(email['snippet']) > 100 else email['snippet']
-                            safe_snippet = snippet.replace('|', '\\|').replace('\n', ' ')
-                            f.write(f"| {short_date} | {direction} | {safe_subject} | {safe_snippet} | [View]({gmail_url}) |\n")
-                        else:
-                            f.write(f"| {short_date} | {direction} | {safe_subject} | [View]({gmail_url}) |\n")
-
+                # Always use compact table format
+                if show_preview and not summarize:
+                    f.write("| Date | From → To | Subject | Preview | Link |\n")
+                    f.write("|------|-----------|---------|---------|------|\n")
                 else:
-                    # Detailed format for full mode
-                    for idx, email in enumerate(emails, 1):
-                        f.write(f"## {idx}. {email['subject']}\n\n")
-                        f.write(f"- **From:** {email['from']}\n")
-                        f.write(f"- **To:** {email['to']}\n")
-                        if email.get("cc"):
-                            f.write(f"- **CC:** {email['cc']}\n")
-                        f.write(f"- **Date:** {email['date']}\n")
-                        f.write(f"- **Email ID:** `{email['id']}`\n")
+                    f.write("| Date | From → To | Subject | Link |\n")
+                    f.write("|------|-----------|---------|------|\n")
 
-                        if email["attachments"]:
-                            f.write(f"- **Attachments:** {len(email['attachments'])}\n")
-                            for att in email["attachments"]:
-                                size_kb = att["size"] / 1024
-                                f.write(f"  - {att['filename']} ({size_kb:.1f} KB, {att['mimeType']})\n")
+                for email in emails:
+                    # Format date
+                    short_date = format_short_date(email['date'])
 
-                        f.write(f"\n### Preview\n\n")
-                        f.write(f"{email['snippet']}\n\n")
+                    # Extract names
+                    from_name = extract_name(email['from'])
 
-                        if email.get("body_preview"):
-                            f.write(f"### Body Preview\n\n")
-                            f.write(f"```\n{email['body_preview']}\n```\n\n")
+                    # Handle multiple recipients
+                    to_addresses = email['to'].split(',')
+                    to_names = [extract_name(addr.strip()) for addr in to_addresses[:3]]  # Max 3
+                    to_text = ", ".join(to_names)
+                    if len(to_addresses) > 3:
+                        to_text += f" +{len(to_addresses) - 3}"
 
-                        f.write("---\n\n")
+                    # Build from/to column
+                    direction = f"{from_name} → {to_text}"
+
+                    # Gmail web URL
+                    gmail_url = f"https://mail.google.com/mail/u/0/#all/{email['id']}"
+
+                    # Write table row
+                    # Escape pipe characters in subject and snippet
+                    safe_subject = email['subject'].replace('|', '\\|')
+
+                    if show_preview and not summarize:
+                        # Truncate snippet to ~100 chars for preview column
+                        snippet = email['snippet'][:100] + "..." if len(email['snippet']) > 100 else email['snippet']
+                        safe_snippet = snippet.replace('|', '\\|').replace('\n', ' ')
+                        f.write(f"| {short_date} | {direction} | {safe_subject} | {safe_snippet} | [View]({gmail_url}) |\n")
+                    else:
+                        f.write(f"| {short_date} | {direction} | {safe_subject} | [View]({gmail_url}) |\n")
+
+                    # Add AI summary as table rows if available
+                    if email.get("ai_summary"):
+                        # Each bullet becomes a full-width table row
+                        summary_lines = email['ai_summary'].split('\n')
+                        for line in summary_lines:
+                            if line.strip():
+                                stripped = line.strip()
+                                # Format overview line with italics
+                                if stripped.startswith('- Overview:'):
+                                    text = stripped.replace('- Overview:', '- *Overview*:', 1)
+                                    # Pad to fill the row width (roughly 140 chars)
+                                    f.write(f"|               {text:<125}|\n")
+                                else:
+                                    # Regular bullet points
+                                    f.write(f"|               {stripped:<125}|\n")
+                        # Add empty row for spacing
+                        f.write(f"|               {'':125}|\n")
 
         print_header("Export Complete")
         print_success(f"Results saved to: {output_file}")
@@ -573,6 +602,11 @@ Examples:
         action="store_true",
         help="Show email snippet/preview in summary mode (markdown format only)",
     )
+    parser.add_argument(
+        "--summarize",
+        action="store_true",
+        help="Generate AI summaries using Claude API (requires ANTHROPIC_API_KEY in .env, forces full detail level)",
+    )
 
     # Account
     parser.add_argument(
@@ -601,6 +635,7 @@ Examples:
                 output_format=args.format,
                 detail_level=args.detail_level,
                 show_preview=args.show_preview,
+                summarize=args.summarize,
             )
         )
         return 0
