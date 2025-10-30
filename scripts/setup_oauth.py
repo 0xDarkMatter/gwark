@@ -23,17 +23,17 @@ def print_header(text: str) -> None:
 
 def print_success(text: str) -> None:
     """Print a success message."""
-    print(f"✓ {text}")
+    print(f"[OK] {text}")
 
 
 def print_error(text: str) -> None:
     """Print an error message."""
-    print(f"✗ {text}", file=sys.stderr)
+    print(f"[X] {text}", file=sys.stderr)
 
 
 def print_info(text: str) -> None:
     """Print an info message."""
-    print(f"ℹ {text}")
+    print(f"[i] {text}")
 
 
 async def setup_oauth(account_id: str = "primary", manual: bool = False) -> bool:
