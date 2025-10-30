@@ -1,0 +1,57 @@
+{
+  "description": "Example MCP client configuration for Gmail MCP Server",
+  "mcpServers": {
+    "gmail": {
+      "command": "python",
+      "args": ["-m", "gmail_mcp"],
+      "cwd": "/path/to/gmail-mcp",
+      "env": {
+        "LOG_LEVEL": "INFO",
+        "CACHE_ENABLED": "true"
+      }
+    }
+  },
+  "examples": {
+    "search_unread": {
+      "tool": "search_emails",
+      "parameters": {
+        "query": "is:unread",
+        "page_size": 50
+      }
+    },
+    "search_from_sender": {
+      "tool": "search_emails",
+      "parameters": {
+        "query": "from:example@gmail.com after:2024/01/01"
+      }
+    },
+    "read_email": {
+      "tool": "read_email",
+      "parameters": {
+        "message_id": "18c5a1b2f3d4e5f6",
+        "format": "full"
+      }
+    },
+    "mark_as_read": {
+      "tool": "mark_as_read",
+      "parameters": {
+        "message_id": "18c5a1b2f3d4e5f6"
+      }
+    },
+    "batch_read": {
+      "tool": "batch_read",
+      "parameters": {
+        "message_ids": ["msg_001", "msg_002", "msg_003"],
+        "format": "metadata"
+      }
+    },
+    "apply_labels": {
+      "tool": "apply_labels",
+      "parameters": {
+        "message_id": "18c5a1b2f3d4e5f6",
+        "label_ids": ["Label_123"],
+        "remove_labels": ["INBOX"]
+      }
+    }
+  }
+}

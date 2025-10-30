@@ -1,0 +1,55 @@
+{
+  "sample_emails": [
+    {
+      "id": "msg_001",
+      "threadId": "thread_001",
+      "labelIds": ["INBOX", "UNREAD"],
+      "snippet": "This is the first test email",
+      "payload": {
+        "headers": [
+          {"name": "From", "value": "alice@example.com"},
+          {"name": "To", "value": "bob@example.com"},
+          {"name": "Subject", "value": "Meeting Tomorrow"},
+          {"name": "Date", "value": "Mon, 1 Jan 2024 10:00:00 +0000"}
+        ],
+        "body": {
+          "data": "TGV0J3MgbWVldCB0b21vcnJvdyBhdCAxMCBBTS4="
+        }
+      }
+    },
+    {
+      "id": "msg_002",
+      "threadId": "thread_002",
+      "labelIds": ["INBOX", "IMPORTANT"],
+      "snippet": "Important project update",
+      "payload": {
+        "headers": [
+          {"name": "From", "value": "manager@example.com"},
+          {"name": "To", "value": "team@example.com"},
+          {"name": "Subject", "value": "Project Status Update"},
+          {"name": "Date", "value": "Tue, 2 Jan 2024 14:30:00 +0000"}
+        ],
+        "body": {
+          "data": "VGhlIHByb2plY3QgaXMgb24gdHJhY2su"
+        }
+      }
+    },
+    {
+      "id": "msg_003",
+      "threadId": "thread_001",
+      "labelIds": ["INBOX"],
+      "snippet": "Re: Meeting Tomorrow",
+      "payload": {
+        "headers": [
+          {"name": "From", "value": "bob@example.com"},
+          {"name": "To", "value": "alice@example.com"},
+          {"name": "Subject", "value": "Re: Meeting Tomorrow"},
+          {"name": "Date", "value": "Mon, 1 Jan 2024 11:00:00 +0000"}
+        ],
+        "body": {
+          "data": "U291bmRzIGdvb2QhIFNlZSB5b3UgdGhlbi4="
+        }
+      }
+    }
+  ]
+}
