@@ -38,11 +38,55 @@ def print_info(text: str) -> None:
     print(f"[INFO] {text}")
 
 
-def extract_email_details(email_data: dict) -> dict:
+def extract_name(email_address: str) -> str:
+    """Extract name from email address.
+
+    Examples:
+        "John Doe <john@example.com>" -> "John Doe"
+        "john@example.com" -> "john"
+        "John.Doe@example.com" -> "John Doe"
+    """
+    if not email_address:
+        return "Unknown"
+
+    # Check if name is in angle brackets format
+    if "<" in email_address:
+        name_part = email_address.split("<")[0].strip()
+        if name_part:
+            return name_part
+
+    # Extract from email address
+    email_part = email_address.split("<")[-1].replace(">", "").strip()
+    local_part = email_part.split("@")[0]
+
+    # Replace dots and underscores with spaces, capitalize
+    name = local_part.replace(".", " ").replace("_", " ").title()
+    return name
+
+
+def format_short_date(date_str: str) -> str:
+    """Format date string to DD/MM/YYYY.
+
+    Args:
+        date_str: Email date string
+
+    Returns:
+        Formatted date string or original if parsing fails
+    """
+    try:
+        from email.utils import parsedate_to_datetime
+        parsed = parsedate_to_datetime(date_str)
+        return parsed.strftime("%d/%m/%Y")
+    except Exception:
+        return date_str
+
+
+def extract_email_details(email_data: dict, detail_level: str = "full") -> dict:
     """Extract relevant details from email message.
 
     Args:
         email_data: Raw Gmail API message data
+        detail_level: Level of detail - "summary", "metadata", or "full"
 
     Returns:
         Structured email details dictionary
@@ -52,59 +96,6 @@ def extract_email_details(email_data: dict) -> dict:
 
     # Build header lookup
     header_map = {h["name"]: h["value"] for h in headers}
-
-    # Extract email body
-    def get_body(payload):
-        """Recursively extract email body text."""
-        if "body" in payload and payload["body"].get("data"):
-            try:
-                return base64.urlsafe_b64decode(payload["body"]["data"]).decode(
-                    "utf-8", errors="ignore"
-                )
-            except Exception:
-                return ""
-
-        if "parts" in payload:
-            for part in payload["parts"]:
-                # Prefer text/plain, fallback to text/html
-                if part.get("mimeType") in ["text/plain", "text/html"]:
-                    if part.get("body", {}).get("data"):
-                        try:
-                            return base64.urlsafe_b64decode(part["body"]["data"]).decode(
-                                "utf-8", errors="ignore"
-                            )
-                        except Exception:
-                            continue
-                # Recursive for nested parts
-                if "parts" in part:
-                    body = get_body(part)
-                    if body:
-                        return body
-        return ""
-
-    body_text = get_body(payload)
-
-    # Extract attachments
-    attachments = []
-
-    def extract_attachments(parts):
-        """Recursively extract attachment info."""
-        for part in parts:
-            filename = part.get("filename")
-            if filename:
-                attachments.append(
-                    {
-                        "filename": filename,
-                        "mimeType": part.get("mimeType", "unknown"),
-                        "size": part.get("body", {}).get("size", 0),
-                    }
-                )
-            # Recurse into nested parts
-            if "parts" in part:
-                extract_attachments(part["parts"])
-
-    if "parts" in payload:
-        extract_attachments(payload["parts"])
 
     # Parse date
     date_str = header_map.get("Date", "")
@@ -117,23 +108,85 @@ def extract_email_details(email_data: dict) -> dict:
     except Exception:
         date_timestamp = 0
 
-    return {
+    # Basic metadata available in all modes
+    result = {
         "id": email_data["id"],
         "threadId": email_data.get("threadId"),
         "subject": header_map.get("Subject", "No Subject"),
         "from": header_map.get("From", "Unknown"),
         "to": header_map.get("To", "Unknown"),
-        "cc": header_map.get("Cc"),
-        "bcc": header_map.get("Bcc"),
         "date": date_str,
         "date_timestamp": date_timestamp,
         "snippet": email_data.get("snippet", ""),
-        "body_preview": body_text[:500] if body_text else email_data.get("snippet", ""),
-        "body_full": body_text if len(body_text) < 10000 else body_text[:10000] + "...",
-        "attachments": attachments,
         "labels": email_data.get("labelIds", []),
         "size_estimate": email_data.get("sizeEstimate", 0),
     }
+
+    # Only extract body and attachments in full mode
+    if detail_level == "full":
+        # Extract email body
+        def get_body(payload):
+            """Recursively extract email body text."""
+            if "body" in payload and payload["body"].get("data"):
+                try:
+                    return base64.urlsafe_b64decode(payload["body"]["data"]).decode(
+                        "utf-8", errors="ignore"
+                    )
+                except Exception:
+                    return ""
+
+            if "parts" in payload:
+                for part in payload["parts"]:
+                    # Prefer text/plain, fallback to text/html
+                    if part.get("mimeType") in ["text/plain", "text/html"]:
+                        if part.get("body", {}).get("data"):
+                            try:
+                                return base64.urlsafe_b64decode(part["body"]["data"]).decode(
+                                    "utf-8", errors="ignore"
+                                )
+                            except Exception:
+                                continue
+                    # Recursive for nested parts
+                    if "parts" in part:
+                        body = get_body(part)
+                        if body:
+                            return body
+            return ""
+
+        body_text = get_body(payload)
+
+        # Extract attachments
+        attachments = []
+
+        def extract_attachments(parts):
+            """Recursively extract attachment info."""
+            for part in parts:
+                filename = part.get("filename")
+                if filename:
+                    attachments.append(
+                        {
+                            "filename": filename,
+                            "mimeType": part.get("mimeType", "unknown"),
+                            "size": part.get("body", {}).get("size", 0),
+                        }
+                    )
+                # Recurse into nested parts
+                if "parts" in part:
+                    extract_attachments(part["parts"])
+
+        if "parts" in payload:
+            extract_attachments(payload["parts"])
+
+        result["cc"] = header_map.get("Cc")
+        result["bcc"] = header_map.get("Bcc")
+        result["body_preview"] = body_text[:500] if body_text else email_data.get("snippet", "")
+        result["body_full"] = body_text if len(body_text) < 10000 else body_text[:10000] + "..."
+        result["attachments"] = attachments
+    else:
+        # Summary/metadata mode - minimal data
+        result["attachments"] = []
+
+    return result
 
 
 async def search_emails(
@@ -146,7 +199,7 @@ async def search_emails(
     max_results: int = 500,
     account_id: str = "primary",
     output_format: str = "json",
-    include_body: bool = False,
+    detail_level: str = "summary",
 ) -> None:
     """Search and export Gmail emails based on criteria.
 
@@ -159,8 +212,8 @@ async def search_emails(
         days_back: Number of days to look back
         max_results: Maximum results to return
         account_id: Gmail account ID
-        output_format: Output format (json, csv, text)
-        include_body: Include full email body in export
+        output_format: Output format (json, csv, text, markdown)
+        detail_level: Detail level - "summary" (fast, metadata only), "full" (slow, includes body/attachments)
     """
     print_header("Gmail Email Search")
 
@@ -191,6 +244,7 @@ async def search_emails(
     print_info(f"Query: {search_query}")
     print_info(f"Date Range: Last {days_back} days")
     print_info(f"Max Results: {max_results}")
+    print_info(f"Detail Level: {detail_level}")
     print()
 
     # Create client and operations
@@ -224,10 +278,15 @@ async def search_emails(
         all_successful = {}
         all_failed = {}
 
+        # Choose API format based on detail level
+        api_format = "full" if detail_level == "full" else "metadata"
+
+        print_info(f"Fetching emails with format: {api_format}")
+
         # Process in chunks of 50
         for i in range(0, len(message_ids), 50):
             chunk = message_ids[i:i+50]
-            batch_results = await batch_ops.batch_read(message_ids=chunk, format="full")
+            batch_results = await batch_ops.batch_read(message_ids=chunk, format=api_format)
             all_successful.update(batch_results["successful"])
             all_failed.update(batch_results["failed"])
 
@@ -245,12 +304,7 @@ async def search_emails(
         emails = []
 
         for msg_id, email_data in batch_results["successful"].items():
-            details = extract_email_details(email_data)
-
-            # Optionally exclude full body
-            if not include_body:
-                details.pop("body_full", None)
-
+            details = extract_email_details(email_data, detail_level=detail_level)
             emails.append(details)
 
         # Sort by date (most recent first)
@@ -274,7 +328,7 @@ async def search_emails(
             if email.get("cc"):
                 print(f"    CC: {email['cc']}")
 
-            if email["attachments"]:
+            if detail_level == "full" and email["attachments"]:
                 print(f"    Attachments ({len(email['attachments'])}):")
                 for att in email["attachments"][:3]:  # Show first 3
                     size_kb = att["size"] / 1024
@@ -366,6 +420,72 @@ async def search_emails(
                     f.write(f"\n{email['snippet']}\n")
                     f.write("-" * 80 + "\n\n")
 
+        elif output_format == "markdown":
+            output_file = reports_dir / f"email_search_{timestamp}.md"
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(f"# Email Search Results\n\n")
+                f.write(f"**Query:** `{search_query}`  \n")
+                f.write(f"**Date:** {datetime.now().isoformat()}  \n")
+                f.write(f"**Total Results:** {len(emails)}  \n")
+                f.write(f"**Detail Level:** {detail_level}  \n\n")
+                f.write("---\n\n")
+
+                if detail_level == "summary":
+                    # Compact table format for summary mode
+                    f.write("| Date | From → To | Subject | Link |\n")
+                    f.write("|------|-----------|---------|------|\n")
+
+                    for email in emails:
+                        # Format date
+                        short_date = format_short_date(email['date'])
+
+                        # Extract names
+                        from_name = extract_name(email['from'])
+
+                        # Handle multiple recipients
+                        to_addresses = email['to'].split(',')
+                        to_names = [extract_name(addr.strip()) for addr in to_addresses[:3]]  # Max 3
+                        to_text = ", ".join(to_names)
+                        if len(to_addresses) > 3:
+                            to_text += f" +{len(to_addresses) - 3}"
+
+                        # Build from/to column
+                        direction = f"{from_name} → {to_text}"
+
+                        # Gmail web URL
+                        gmail_url = f"https://mail.google.com/mail/u/0/#all/{email['id']}"
+
+                        # Write table row
+                        # Escape pipe characters in subject
+                        safe_subject = email['subject'].replace('|', '\\|')
+                        f.write(f"| {short_date} | {direction} | {safe_subject} | [View]({gmail_url}) |\n")
+
+                else:
+                    # Detailed format for full mode
+                    for idx, email in enumerate(emails, 1):
+                        f.write(f"## {idx}. {email['subject']}\n\n")
+                        f.write(f"- **From:** {email['from']}\n")
+                        f.write(f"- **To:** {email['to']}\n")
+                        if email.get("cc"):
+                            f.write(f"- **CC:** {email['cc']}\n")
+                        f.write(f"- **Date:** {email['date']}\n")
+                        f.write(f"- **Email ID:** `{email['id']}`\n")
+
+                        if email["attachments"]:
+                            f.write(f"- **Attachments:** {len(email['attachments'])}\n")
+                            for att in email["attachments"]:
+                                size_kb = att["size"] / 1024
+                                f.write(f"  - {att['filename']} ({size_kb:.1f} KB, {att['mimeType']})\n")
+
+                        f.write(f"\n### Preview\n\n")
+                        f.write(f"{email['snippet']}\n\n")
+
+                        if email.get("body_preview"):
+                            f.write(f"### Body Preview\n\n")
+                            f.write(f"```\n{email['body_preview']}\n```\n\n")
+
+                        f.write("---\n\n")
+
         print_header("Export Complete")
         print_success(f"Results saved to: {output_file}")
         print_info(f"Total emails exported: {len(emails)}")
@@ -382,8 +502,11 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Search emails from/to a domain in last 6 months
+  # Quick summary search (fast, metadata only)
   python scripts/email_search.py --domain grandprix.com.au --days-back 180
+
+  # Full detail search (slow, includes body and attachments)
+  python scripts/email_search.py --domain grandprix.com.au --detail-level full
 
   # Search by sender
   python scripts/email_search.py --sender john@example.com --days-back 30
@@ -394,11 +517,10 @@ Examples:
   # Custom Gmail query
   python scripts/email_search.py --query "has:attachment larger:5M" --days-back 60
 
-  # Export to CSV
+  # Export to different formats
+  python scripts/email_search.py --domain example.com --format markdown
   python scripts/email_search.py --domain example.com --format csv
-
-  # Include full email body
-  python scripts/email_search.py --domain example.com --include-body
+  python scripts/email_search.py --domain example.com --format text
         """,
     )
 
@@ -420,12 +542,15 @@ Examples:
     )
     parser.add_argument(
         "--format",
-        choices=["json", "csv", "text"],
+        choices=["json", "csv", "text", "markdown"],
         default="json",
         help="Output format (default: json)",
     )
     parser.add_argument(
-        "--include-body", action="store_true", help="Include full email body in export"
+        "--detail-level",
+        choices=["summary", "full"],
+        default="summary",
+        help="Detail level: 'summary' (fast, metadata only) or 'full' (slow, includes body/attachments) (default: summary)",
     )
 
     # Account
@@ -453,7 +578,7 @@ Examples:
                 max_results=args.max_results,
                 account_id=args.account_id,
                 output_format=args.format,
-                include_body=args.include_body,
+                detail_level=args.detail_level,
             )
         )
         return 0
