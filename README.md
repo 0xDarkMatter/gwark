@@ -81,6 +81,7 @@ A standalone command-line tool for searching and exporting Gmail emails with tok
 
 ### Features
 
+- **AI-Powered Email Summaries** - Generate comprehensive summaries using Claude Haiku (overview + key bullet points)
 - **Token-efficient summary mode** (default) - Uses Gmail API `metadata` format for fast searches
 - **Markdown table output** - Compact one-email-per-line format with clickable Gmail links
 - **Optional preview snippets** - Show ~100 char email previews in summary tables
@@ -92,6 +93,9 @@ A standalone command-line tool for searching and exporting Gmail emails with tok
 ### Quick Examples
 
 ```bash
+# AI-powered email summaries (requires ANTHROPIC_API_KEY in .env)
+python scripts/email_search.py --domain example.com --format markdown --summarize
+
 # Quick summary search (fast, metadata only)
 python scripts/email_search.py --domain example.com --format markdown
 
@@ -135,6 +139,26 @@ With `--show-preview`:
 | 30/10/2025 | John Doe → Jane Smith | Project Update | Thanks for the update on the project... | [View](gmail-link) |
 ```
 
+With `--summarize` (AI-powered summaries):
+```markdown
+| Date | From → To | Subject | Link |
+|------|-----------|---------|------|
+| 30/10/2025 | John Doe → Jane Smith | Project Update | [View](gmail-link) |
+|               - *Overview*: John Doe provides a status update on the Q4 project timeline and budget allocation.|
+|               - Project is 80% complete with delivery scheduled for Friday                                    |
+|               - Database migration issue resolved with workaround                                             |
+|               - Requesting latest financial projections for the meeting                                       |
+|                                                                                                               |
+```
+
+**AI Summarization Details:**
+- Automatically generates 1-2 sentence overview + 2-4 key bullet points per email
+- Uses Claude Haiku for fast, cost-effective summaries
+- Processes emails in batches of 10 for efficiency
+- Requires `ANTHROPIC_API_KEY` in `.env` file
+- Forces `full` detail level to access complete email bodies
+- Summaries displayed as merged table rows for clean formatting
+
 ### All Options
 
 ```bash
@@ -153,6 +177,7 @@ With `--show-preview`:
 --format FORMAT              # json, csv, text, markdown (default: json)
 --detail-level LEVEL         # summary (fast) or full (slow) (default: summary)
 --show-preview               # Show email snippets in markdown tables
+--summarize                  # Generate AI summaries using Claude Haiku (requires API key)
 
 # Account
 --account-id ID              # Gmail account ID (default: primary)
