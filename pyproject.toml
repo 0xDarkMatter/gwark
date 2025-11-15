@@ -94,7 +94,6 @@ minversion = "7.0"
 addopts = "-ra -q --strict-markers --cov=gmail_mcp --cov-report=term-missing"
 testpaths = ["tests"]
 pythonpath = ["src"]
-asyncio_mode = "auto"
 
 [tool.black]
 line-length = 100
