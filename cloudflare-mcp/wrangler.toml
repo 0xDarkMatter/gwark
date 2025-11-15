@@ -1,0 +1,29 @@
+name = "gmail-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Durable Objects for session storage
+[[durable_objects.bindings]]
+name = "GMAIL_SESSIONS"
+class_name = "GmailSession"
+script_name = "gmail-mcp"
+
+# KV namespace for caching
+[[kv_namespaces]]
+binding = "GMAIL_CACHE"
+# id will be created via: wrangler kv:namespace create GMAIL_CACHE
+preview_id = ""
+
+# Environment variables (non-sensitive)
+[vars]
+ENVIRONMENT = "production"
+MCP_VERSION = "0.2.0"
+
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# - GOOGLE_CLIENT_ID
+# - GOOGLE_CLIENT_SECRET
+# - ANTHROPIC_API_KEY (optional, for AI features)
+
+# Resource limits
+[limits]
+cpu_ms = 30000  # 30 seconds max CPU time
