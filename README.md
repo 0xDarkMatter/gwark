@@ -1,5 +1,8 @@
 # gwark
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **Google Workspace CLI** - A unified command-line tool for Gmail, Calendar, and Drive operations.
 
 ## Features
@@ -188,10 +191,17 @@ black src/ tests/
 ruff check src/ tests/
 ```
 
-## Future: MCP Server
+## Roadmap
 
-An MCP (Model Context Protocol) server for Claude Desktop integration is planned for a future release. The core `gmail_mcp` library already supports MCP server functionality.
+- [ ] MCP Server for Claude Desktop integration
+- [ ] Summary caching to avoid re-processing
+- [ ] Retry logic with exponential backoff
+- [ ] Multi-account support
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+Built with [Typer](https://typer.tiangolo.com/) and [Rich](https://rich.readthedocs.io/)
