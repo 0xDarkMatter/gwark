@@ -1,143 +1,116 @@
 # Current Sprint Plan
 
-**Sprint**: v0.1.0 - Foundation & Utilities
-**Duration**: 2 weeks (2025-10-18 to 2025-11-01)
-**Goal**: Complete core infrastructure and AI-powered email utilities
+**Sprint**: v0.2.0 - gwark CLI
+**Updated**: 2026-01-07
+**Goal**: Unified Google Workspace CLI tool with profile-based configuration
+
+---
+
+## Completed (v0.1.0 → v0.2.0)
+
+### gwark CLI Implementation
+- [x] Create `gwark` package structure (`src/gwark/`)
+- [x] Implement Typer-based CLI with subcommands
+- [x] Email commands: search, sent, summarize
+- [x] Calendar command: meetings
+- [x] Drive command: activity
+- [x] Config commands: init, show, auth, profile
+- [x] Core utilities: config loader, output formatters, date parsing
+- [x] YAML-based configuration (`.gwark/config.yaml`)
+- [x] Profile system with work/default profiles
+
+### Cleanup
+- [x] Delete redundant scripts (sent_emails_simple.py, sent_emails_direct.py, etc.)
+- [x] Delete root-level artifacts (NUL files, .coverage, etc.)
+- [x] Archive deprecated scripts to `scripts/_deprecated/`
+- [x] Optimize rate limits for Google Workspace (250 req/sec, 50 concurrent)
+
+### Infrastructure
+- [x] Add Typer and Rich dependencies
+- [x] Update pyproject.toml with gwark entry point
+- [x] Create `.gwark/` config directory with profiles
 
 ---
 
 ## In Progress
 
-- [ ] Complete MCP server implementation in `src/gmail_mcp/server/mcp_server.py`
-  - Implement tool registration
-  - Add request/response handling
-  - Test with Claude Desktop integration
-
-- [ ] Finalize email analysis scripts (sent email analyzers)
-  - Refactor `sent_email_analyzer.py` and `sent_emails_simple.py`
-  - Add comprehensive documentation
-  - Test with real email data
-
-## Pending
-
-- [ ] Add comprehensive error handling to email_search.py
-  - Better handling of API rate limits
-  - Graceful degradation when API key missing
-  - Retry logic for transient failures
-
-- [ ] Implement automatic rate limit handling in email_summarizer.py
-  - Exponential backoff on rate limit errors (429)
-  - Queue-based request management
-  - Progress tracking for long-running operations
-
-- [ ] Add summary caching to avoid re-processing
-  - Cache summaries in SQLite database
-  - TTL-based cache invalidation
-  - Cache hit/miss metrics
-
-- [ ] Write comprehensive tests for core modules
-  - Unit tests for OAuth2 authentication
-  - Tests for email_search.py functionality
-  - Tests for AI summarization
-  - Mock Gmail API for testing
-
-- [ ] Update documentation
-  - Create docs/API.md with tool reference
-  - Create docs/ARCHITECTURE.md with design details
-  - Update docs/OAUTH_SETUP.md with screenshots
-  - Create docs/TROUBLESHOOTING.md
-
-- [ ] Setup CI/CD pipeline
-  - GitHub Actions for automated testing
-  - Code quality checks (black, ruff, mypy)
-  - Coverage reporting
-
-## Completed
-
-- [x] Project scaffolding and initial structure *(Commit: 4c67b0a)*
-- [x] OAuth2 authentication setup with encrypted token storage *(Commit: f1fcd9b)*
-- [x] Gmail API client implementation with async operations
-- [x] Email search utility with domain/sender/subject filtering *(Commit: f1fcd9b)*
-- [x] Token-efficient summary mode using metadata format *(Commit: afa84d9)*
-- [x] Markdown table output format *(Commit: afa84d9)*
-- [x] Organize exports into reports directory *(Commit: 2df7d35)*
-- [x] Fix SSL concurrency errors in batch operations *(Commit: 19258b2)*
-- [x] Add --show-preview flag for email snippets *(Commit: 578ec33)*
-- [x] Implement AI-powered email summarization using Claude Haiku *(Commit: f581182)*
-- [x] Batch processing (10 emails per API call) for efficiency *(Commit: f581182)*
-- [x] Add comprehensive documentation to README *(Commit: 20fecd0, 1286f80)*
-- [x] Create CLAUDE.md development guide *(Commit: 1286f80)*
-- [x] Add API efficiency improvements and code refactoring *(Commit: af177be)*
-- [x] Fix missing OAuth2Manager and TokenManager exports *(Commit: b29c72c)*
+- [ ] Test gwark CLI with real Gmail account
+- [ ] Verify all commands work end-to-end
 
 ---
 
-## Sprint Notes
+## Pending (v0.2.x)
 
-### Current Focus
+### Error Handling & Resilience
+- [ ] Add retry logic with exponential backoff for rate limits (429)
+- [ ] Graceful degradation when AI API key is missing
+- [ ] Better error messages for OAuth failures
 
-**Primary**: Completing MCP server core functionality to enable Claude Desktop integration
+### Caching
+- [ ] Cache AI summaries to avoid re-processing
+- [ ] Cache search results with TTL
+- [ ] Progress indicators for long operations
 
-**Secondary**: Finalizing email analysis utilities and improving error handling
+### Testing
+- [ ] Basic unit tests for config loading
+- [ ] Basic tests for date parsing utilities
+- [ ] Basic tests for output formatters
 
-### Recent Achievements (Last 30 Days)
-
-1. **AI Summarization** - Successfully implemented Claude Haiku integration with batch processing
-2. **Email Search Utility** - Feature-complete standalone tool with multiple export formats
-3. **Documentation** - Comprehensive CLAUDE.md guide for AI assistants
-4. **Bug Fixes** - Resolved SSL concurrency issues and export organization
-
-### Uncommitted Work
-
-Currently 6 uncommitted changes detected:
-- `.claude/settings.local.json` - Local configuration changes
-- `.claude/agents/` - New agent configurations
-- `scripts/sent_email_analyzer.py` - New script
-- `scripts/sent_emails_simple.py` - New script
-- Plus 2 `NUL` files (likely temp files to delete)
-
-💡 **Tip**: Commit the new sent email analyzer scripts once testing is complete
-
-### Technical Debt
-
-1. **Rate Limiting** - Email summarizer needs retry logic for API rate limits (429 errors)
-2. **Caching** - Summaries should be cached to avoid expensive re-processing
-3. **Testing** - Core modules need comprehensive unit tests
-4. **Error Messages** - More user-friendly error messages throughout
-
-### Blockers
-
-None currently.
-
-### Next Sprint Preview (v0.2.0)
-
-- Complete MCP server implementation with all core tools
-- Integration testing with Claude Desktop
-- Tool registration: search_emails, read_email, batch_read, labels, etc.
-- Performance optimization for large email volumes
+### Documentation
+- [ ] Update CLAUDE.md with gwark CLI info
+- [ ] Create docs/CLI.md with full command reference
+- [ ] Add examples to profiles
 
 ---
 
-## Acceptance Criteria
+## Deferred (Future)
 
-### For Sprint Completion
+### MCP Server (v0.3.0+)
+- [ ] Complete MCP server implementation
+- [ ] Tool registration for Claude Desktop
+- [ ] Integration testing with MCP clients
 
-- [x] OAuth2 authentication working end-to-end
-- [x] Email search utility supports all documented formats
-- [x] AI summarization produces high-quality summaries
-- [ ] MCP server successfully registers all core tools
-- [ ] Documentation complete (API, Architecture, Troubleshooting)
-- [ ] Core modules have >70% test coverage
+### Advanced Features
+- [ ] Email body search (not just metadata)
+- [ ] Attachment downloading
+- [ ] Label management
+- [ ] Email sending
+- [ ] Incremental sync
 
-### For v0.1.0 Release
-
-- [ ] All sprint tasks completed
-- [ ] No critical bugs
-- [ ] README accurate and complete
-- [ ] Can successfully search/export emails via CLI
-- [ ] Can generate AI summaries with Claude API key
-- [ ] Ready to begin MCP server integration testing
+### Distribution
+- [ ] PyPI package publishing
+- [ ] Shell completion scripts
+- [ ] Docker image
 
 ---
 
-Last Updated: 2025-11-01 14:45
+## Architecture
+
+```
+src/
+├── gmail_mcp/          # Core library (OAuth, Gmail API client, cache)
+└── gwark/              # CLI tool
+    ├── commands/       # Typer command modules
+    ├── core/           # Utilities (config, output, dates)
+    └── schemas/        # Pydantic config models
+
+.gwark/                 # Project-local configuration
+├── config.yaml         # Main settings
+└── profiles/           # Filter profiles
+```
+
+---
+
+## Key Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| CLI Framework | Typer | Modern, type-hint based, auto-generates help |
+| Config Format | YAML | Human-readable, supports comments |
+| Config Location | `.gwark/` (project-local) | Per-project customization |
+| Rate Limits | 250/sec, 50 concurrent | Google Workspace defaults |
+| MCP Server | Deferred | Focus on CLI first |
+
+---
+
+Last Updated: 2026-01-07
