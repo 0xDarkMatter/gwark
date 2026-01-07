@@ -45,8 +45,8 @@ def get_google_service(
     """
     creds: Optional[Credentials] = None
     project_root: Path = Path(__file__).parent.parent.parent.parent
-    token_path: Path = project_root / 'data' / 'tokens' / token_filename
-    creds_path: Path = project_root / 'config' / 'oauth2_credentials.json'
+    token_path: Path = project_root / '.gwark' / 'tokens' / token_filename
+    creds_path: Path = project_root / '.gwark' / 'credentials' / 'oauth2_credentials.json'
 
     # Create directories if they don't exist
     token_path.parent.mkdir(parents=True, exist_ok=True)

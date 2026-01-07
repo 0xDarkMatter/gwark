@@ -32,8 +32,13 @@ class OAuth2Manager:
         self.credentials_path = credentials_path or self.settings.oauth2_credentials_path
         self.scopes = scopes or self.settings.gmail_scopes
 
+        # Only warn if credentials file missing - it's only needed for new auth flows
         if not self.credentials_path.exists():
-            logger.error(f"OAuth2 credentials file not found: {self.credentials_path}")
+            logger.debug(f"OAuth2 credentials file not found: {self.credentials_path}")
+
+    def _require_credentials_file(self) -> None:
+        """Raise error if credentials file is missing (for auth flows that need it)."""
+        if not self.credentials_path.exists():
             raise FileNotFoundError(
                 f"OAuth2 credentials file not found: {self.credentials_path}. "
                 f"Please download it from Google Cloud Console and place it at this path."
@@ -53,6 +58,7 @@ class OAuth2Manager:
         Returns:
             Tuple of (authorization_url, state)
         """
+        self._require_credentials_file()
         flow = InstalledAppFlow.from_client_secrets_file(
             str(self.credentials_path),
             scopes=self.scopes,
@@ -83,6 +89,7 @@ class OAuth2Manager:
         Returns:
             Google OAuth2 Credentials object
         """
+        self._require_credentials_file()
         flow = InstalledAppFlow.from_client_secrets_file(
             str(self.credentials_path),
             scopes=self.scopes,
@@ -104,6 +111,7 @@ class OAuth2Manager:
         Returns:
             Google OAuth2 Credentials object
         """
+        self._require_credentials_file()
         flow = InstalledAppFlow.from_client_secrets_file(
             str(self.credentials_path),
             scopes=self.scopes,
