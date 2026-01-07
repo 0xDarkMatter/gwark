@@ -1,4 +1,5 @@
 # gwark configuration
+# Copy to .gwark/config.yaml
 version: "1.0"
 
 # Default settings for all commands
@@ -24,11 +25,10 @@ ai:
 
 # Rate limiting (Google Workspace limits)
 # Project: 1,200,000 queries/min | Per-user: 15,000 queries/min
-# Note: max_concurrent can be increased to 50 for stable network connections
 gmail:
   rate_limit_per_second: 250
   rate_limit_burst: 100
-  max_concurrent: 10
+  max_concurrent: 10  # Increase to 50 for stable networks
 
 # Active profile (profiles stored in .gwark/profiles/)
 active_profile: default

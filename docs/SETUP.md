@@ -49,7 +49,7 @@ Quick steps:
 2. Enable Gmail API
 3. Create OAuth2 credentials (Desktop App)
 4. Download credentials JSON
-5. Save as `config/oauth2_credentials.json`
+5. Save as `.gwark/credentials/oauth2_credentials.json`
 
 ### 5. Configure Environment
 
@@ -70,7 +70,7 @@ python scripts/setup_oauth.py
 # This will:
 # 1. Open a browser for Google authentication
 # 2. Request necessary permissions
-# 3. Save encrypted tokens to data/tokens/
+# 3. Save encrypted tokens to .gwark/tokens/
 ```
 
 ### 7. Test the Setup
@@ -139,7 +139,7 @@ logging:
   file: "logs/gmail_mcp.log"
 
 oauth2:
-  credentials_path: "config/oauth2_credentials.json"
+  credentials_path: ".gwark/credentials/oauth2_credentials.json"
   scopes:
     - "https://www.googleapis.com/auth/gmail.readonly"
     - "https://www.googleapis.com/auth/gmail.modify"
@@ -242,7 +242,7 @@ tail -f logs/gmail_mcp.log
 
 **Problem**: "No credentials found"
 - Run `python scripts/setup_oauth.py` again
-- Check `config/oauth2_credentials.json` exists
+- Check `.gwark/credentials/oauth2_credentials.json` exists
 - Verify file permissions
 
 **Problem**: "Invalid credentials"

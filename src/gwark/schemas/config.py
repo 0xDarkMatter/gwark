@@ -62,11 +62,11 @@ class AuthConfig(BaseModel):
     """Authentication configuration."""
 
     credentials_path: Path = Field(
-        default=Path("config/oauth2_credentials.json"),
+        default=Path(".gwark/credentials/oauth2_credentials.json"),
         description="Path to OAuth2 credentials file"
     )
     tokens_path: Path = Field(
-        default=Path("data/tokens"),
+        default=Path(".gwark/tokens"),
         description="Directory for storing OAuth2 tokens"
     )
     default_account: str = Field(default="primary", description="Default account ID")

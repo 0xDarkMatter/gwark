@@ -65,7 +65,7 @@ def get_google_service(
             if not creds_path.exists():
                 print(f"[ERROR] OAuth2 credentials not found at {creds_path}")
                 print("Please download credentials from Google Cloud Console")
-                print("and save to config/oauth2_credentials.json")
+                print("and save to .gwark/credentials/oauth2_credentials.json")
                 sys.exit(1)
 
             print("[INFO] Starting OAuth2 authentication flow...")

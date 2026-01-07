@@ -60,7 +60,7 @@
 
 ## Next Step: Authenticate
 
-Once you have `config/oauth2_credentials.json`, run:
+Once you have `.gwark/credentials/oauth2_credentials.json`, run:
 
 ```bash
 python scripts/setup_oauth.py
@@ -85,7 +85,7 @@ python scripts/email_search.py --domain grandprix.com.au --days-back 180
 ## Troubleshooting
 
 **"OAuth client was not found"**
-- Make sure credentials file is in `config/oauth2_credentials.json`
+- Make sure credentials file is in `.gwark/credentials/oauth2_credentials.json`
 - Verify file is named exactly `oauth2_credentials.json`
 
 **"Access blocked: This app's request is invalid"**
@@ -93,7 +93,7 @@ python scripts/email_search.py --domain grandprix.com.au --days-back 180
 - Make sure all 3 scopes are added
 
 **"invalid_grant"**
-- Delete `data/tokens/primary.token`
+- Delete `.gwark/tokens/primary.token`
 - Re-run `python scripts/setup_oauth.py`
 
 ## Need Help?

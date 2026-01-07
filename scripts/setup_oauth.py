@@ -97,7 +97,7 @@ async def setup_oauth(account_id: str = "primary", manual: bool = False) -> bool
         print_info("  1. Go to https://console.cloud.google.com/")
         print_info("  2. Navigate to APIs & Services > Credentials")
         print_info("  3. Create OAuth 2.0 Client ID (Desktop App)")
-        print_info("  4. Download JSON and save as config/oauth2_credentials.json")
+        print_info("  4. Download JSON and save as .gwark/credentials/oauth2_credentials.json")
         return False
 
     except Exception as e:

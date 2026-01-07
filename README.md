@@ -133,7 +133,7 @@ filters:
 3. Enable APIs: Gmail, Calendar, Drive
 4. Create OAuth2 credentials (Desktop App)
 5. Download credentials JSON
-6. Save as `config/oauth2_credentials.json`
+6. Save as `.gwark/credentials/oauth2_credentials.json`
 
 See [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) for detailed instructions.
 
@@ -163,9 +163,8 @@ gwark/
 │   │   ├── core/           # Utilities (config, output, dates)
 │   │   └── schemas/        # Pydantic config models
 │   └── gmail_mcp/          # Core library (OAuth, API clients, cache)
-├── .gwark/                 # Project configuration
-├── config/                 # OAuth credentials
-├── data/                   # Token storage
+├── .gwark/                 # Runtime config & secrets (gitignored)
+├── config/                 # Templates & examples
 └── reports/                # Generated reports
 ```
 
