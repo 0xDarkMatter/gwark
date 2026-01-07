@@ -2,6 +2,7 @@
 
 import json
 import logging
+import pickle
 from pathlib import Path
 from typing import Optional
 
@@ -114,6 +115,36 @@ class TokenManager:
 
         logger.info(f"Saved encrypted credentials for account: {account_id}")
 
+    def _load_pickle_fallback(self, account_id: str) -> Optional[Credentials]:
+        """Try to load credentials from legacy pickle format.
+
+        Args:
+            account_id: Account identifier (used to find gmail_token.pickle)
+
+        Returns:
+            Credentials if found, None otherwise
+        """
+        # Try common pickle file names
+        pickle_names = [
+            f"{account_id}_token.pickle",
+            "gmail_token.pickle",
+            f"{account_id}.pickle",
+        ]
+
+        for pickle_name in pickle_names:
+            pickle_file = self.storage_path / pickle_name
+            if pickle_file.exists():
+                try:
+                    with open(pickle_file, "rb") as f:
+                        creds = pickle.load(f)
+                    if isinstance(creds, Credentials):
+                        logger.info(f"Loaded credentials from legacy pickle: {pickle_name}")
+                        return creds
+                except Exception as e:
+                    logger.debug(f"Failed to load pickle {pickle_name}: {e}")
+
+        return None
+
     def load_credentials(self, account_id: str = "primary") -> Optional[Credentials]:
         """Load encrypted credentials from disk.
 
@@ -126,6 +157,10 @@ class TokenManager:
         token_file = self._get_token_file_path(account_id)
 
         if not token_file.exists():
+            # Try legacy pickle fallback
+            creds = self._load_pickle_fallback(account_id)
+            if creds:
+                return creds
             logger.warning(f"No credentials found for account: {account_id}")
             return None
 
@@ -153,7 +188,8 @@ class TokenManager:
 
         except Exception as e:
             logger.error(f"Failed to load credentials for {account_id}: {e}")
-            return None
+            # Try pickle fallback on decrypt failure too
+            return self._load_pickle_fallback(account_id)
 
     def delete_credentials(self, account_id: str = "primary") -> bool:
         """Delete stored credentials for an account.
