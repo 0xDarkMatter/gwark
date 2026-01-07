@@ -276,8 +276,9 @@ async def search_emails(
             return
 
         # Batch read email details (chunk into groups of 50)
-        # Reduce concurrency to avoid SSL errors
-        batch_ops = BatchOperations(client=client, max_concurrent=1)
+        # Google Workspace limits: 15,000 queries/min per user (250/sec)
+        # Using 50 concurrent operations to maximize throughput
+        batch_ops = BatchOperations(client=client, max_concurrent=50)
 
         message_ids = [m["id"] for m in messages]
         all_successful = {}

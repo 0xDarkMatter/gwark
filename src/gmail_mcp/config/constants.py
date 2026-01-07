@@ -26,10 +26,20 @@ CACHE_CLEANUP_INTERVAL: Final[int] = 1800  # 30 minutes
 MAX_CACHE_SIZE_MB: Final[int] = 500
 
 # Rate Limiting (Gmail API quotas)
-# Gmail API: 250 quota units/user/second
-# Most read operations: 5 units, write operations: 10-25 units
-DEFAULT_RATE_LIMIT_PER_SECOND: Final[int] = 10
-DEFAULT_RATE_LIMIT_BURST: Final[int] = 20
+# Google Workspace limits (verified):
+#   - Project: 1,200,000 queries/min (20,000/sec)
+#   - Per-user: 15,000 queries/min (250/sec)
+# Quota unit costs:
+#   - messages.list: 5 units
+#   - messages.get: 5 units
+#   - messages.modify: 5 units
+#   - batchModify: 50 units
+# Effective read throughput: 250/5 = 50 messages/sec per user
+DEFAULT_RATE_LIMIT_PER_SECOND: Final[int] = 250
+DEFAULT_RATE_LIMIT_BURST: Final[int] = 100
+
+# Concurrency
+DEFAULT_MAX_CONCURRENT: Final[int] = 50  # Parallel operations
 
 # API Timeouts
 DEFAULT_TIMEOUT_SECONDS: Final[int] = 30

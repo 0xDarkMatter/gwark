@@ -2,6 +2,76 @@
 
 A robust Model Context Protocol (MCP) server for Gmail integration, designed to handle large email volumes efficiently with smart caching, pagination, and batch operations.
 
+## gwark CLI - Google Workspace Command Line Tool
+
+**gwark** is a unified CLI for Gmail, Calendar, and Drive operations.
+
+### Quick Start
+
+```bash
+# Install
+pip install -e .
+
+# Initialize configuration
+gwark config init
+
+# Set up OAuth
+gwark config auth setup
+
+# Search emails
+gwark email search --domain example.com --days 30 --format markdown
+
+# With AI summarization
+gwark email search --domain example.com --summarize
+
+# Calendar meetings
+gwark calendar meetings --days 30 --work-only
+
+# Drive activity
+gwark drive activity --year 2025 --month 1
+```
+
+### Commands
+
+```
+gwark
+├── email
+│   ├── search      Search emails by domain/sender/query
+│   ├── sent        Analyze sent emails for a month
+│   └── summarize   AI summarize emails from JSON
+├── calendar
+│   └── meetings    Extract calendar meetings
+├── drive
+│   └── activity    Extract file activity
+└── config
+    ├── init        Initialize .gwark/ directory
+    ├── show        Display configuration
+    ├── auth        OAuth management (setup/test/list/remove)
+    └── profile     Profile management (list/create/delete)
+```
+
+### Configuration
+
+gwark uses a `.gwark/` directory for configuration:
+
+```
+.gwark/
+├── config.yaml          # Main settings
+└── profiles/
+    ├── default.yaml     # Default profile
+    └── work.yaml        # Work-only filters
+```
+
+Use profiles to filter content:
+
+```bash
+# Use work profile (filters personal items)
+gwark email search --domain company.com --profile work
+gwark calendar meetings --profile work
+```
+
+---
+
 ## Features
 
 - **Async Architecture**: Built on asyncio for high performance and concurrent operations
@@ -286,7 +356,11 @@ CACHE_ENABLED=true
 CACHE_TTL_SECONDS=3600
 DEFAULT_PAGE_SIZE=100
 MAX_BATCH_SIZE=50
-RATE_LIMIT_PER_SECOND=10
+
+# Rate limiting (Google Workspace defaults)
+RATE_LIMIT_PER_SECOND=250
+RATE_LIMIT_BURST=100
+MAX_CONCURRENT=50
 ```
 
 See [.env.example](.env.example) for all available options.
@@ -315,9 +389,29 @@ See [.env.example](.env.example) for all available options.
 
 ### Rate Limiting
 
+Optimized for Google Workspace business accounts with high quotas:
+
+| Limit | Value | Notes |
+|-------|-------|-------|
+| **Project quota** | 1,200,000 queries/min | 20,000/sec project-wide |
+| **Per-user quota** | 15,000 queries/min | 250/sec per user |
+| **Concurrent ops** | 50 parallel | Semaphore-controlled |
+
+**Quota Unit Costs:**
+| Operation | Cost | Effective Rate |
+|-----------|------|----------------|
+| `messages.list` | 5 units | 50 searches/sec |
+| `messages.get` | 5 units | 50 reads/sec |
+| `messages.modify` | 5 units | 50 writes/sec |
+| `batchModify` | 50 units | 5 batch ops/sec |
+
+**Implementation:**
 - **Token Bucket Algorithm**: Respects Gmail API quotas (250 units/user/second)
-- **Automatic Throttling**: Backs off on rate limit errors
-- **Burst Support**: Allows short bursts within limits
+- **Automatic Throttling**: Backs off on rate limit errors (HTTP 429)
+- **Burst Support**: Allows bursts up to 100 requests
+- **50 Concurrent Operations**: Maximizes throughput within limits
+
+> **Note**: These limits are for Google Workspace business accounts. Consumer Gmail accounts have lower limits. Request quota increases via Google Cloud Console → IAM & Admin → Quotas.
 
 ## Development
 

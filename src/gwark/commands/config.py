@@ -1,0 +1,317 @@
+"""Configuration commands for gwark CLI."""
+
+import sys
+from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.syntax import Syntax
+import yaml
+
+# Add project root for imports
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from gwark.core.config import (
+    load_config,
+    save_config,
+    get_profile,
+    save_profile,
+    init_config_dir,
+    find_config_dir,
+    CONFIG_DIR,
+    PROFILES_DIR,
+)
+from gwark.core.output import (
+    print_success,
+    print_info,
+    print_error,
+    print_header,
+    print_warning,
+)
+from gwark.schemas.config import ProfileConfig
+
+console = Console()
+app = typer.Typer(no_args_is_help=True)
+
+# Auth subcommands
+auth_app = typer.Typer(help="Authentication management")
+app.add_typer(auth_app, name="auth")
+
+# Profile subcommands
+profile_app = typer.Typer(help="Profile management")
+app.add_typer(profile_app, name="profile")
+
+
+@app.command()
+def init(
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing config"),
+) -> None:
+    """Initialize a new .gwark configuration directory."""
+    print_header("gwark config init")
+
+    try:
+        config_dir = init_config_dir(force=force)
+        print_success(f"Created configuration directory: {config_dir}")
+        print_info("Created files:")
+        print_info(f"  - {config_dir / 'config.yaml'}")
+        print_info(f"  - {config_dir / PROFILES_DIR / 'default.yaml'}")
+        print_info("")
+        print_info("Next steps:")
+        print_info("  1. Edit .gwark/config.yaml to customize defaults")
+        print_info("  2. Run 'gwark config auth setup' to configure OAuth")
+        print_info("  3. Create profiles in .gwark/profiles/ for different use cases")
+    except FileExistsError as e:
+        print_warning(str(e))
+        print_info("Use --force to overwrite existing configuration")
+        raise typer.Exit(1)
+    except Exception as e:
+        print_error(f"Failed to initialize: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def show(
+    profile_name: Optional[str] = typer.Option(None, "--profile", "-p", help="Show specific profile"),
+) -> None:
+    """Display current configuration."""
+    print_header("gwark config show")
+
+    config_dir = find_config_dir()
+    if not config_dir:
+        print_warning("No .gwark directory found. Run 'gwark config init' first.")
+        raise typer.Exit(1)
+
+    print_info(f"Config directory: {config_dir}")
+
+    if profile_name:
+        # Show specific profile
+        profile = get_profile(profile_name)
+        console.print(f"\n[bold]Profile: {profile_name}[/bold]\n")
+        yaml_content = yaml.dump(profile.model_dump(), default_flow_style=False)
+        syntax = Syntax(yaml_content, "yaml", theme="monokai", line_numbers=True)
+        console.print(syntax)
+    else:
+        # Show main config
+        config = load_config()
+        console.print("\n[bold]Main Configuration[/bold]\n")
+        yaml_content = yaml.dump(config.model_dump(), default_flow_style=False)
+        syntax = Syntax(yaml_content, "yaml", theme="monokai", line_numbers=True)
+        console.print(syntax)
+
+        # List available profiles
+        profiles_dir = config_dir / PROFILES_DIR
+        if profiles_dir.exists():
+            profiles = list(profiles_dir.glob("*.yaml"))
+            if profiles:
+                console.print("\n[bold]Available Profiles[/bold]")
+                for p in profiles:
+                    name = p.stem
+                    active = " (active)" if name == config.active_profile else ""
+                    console.print(f"  - {name}{active}")
+
+
+@profile_app.command("list")
+def profile_list() -> None:
+    """List all available profiles."""
+    print_header("gwark config profile list")
+
+    config_dir = find_config_dir()
+    if not config_dir:
+        print_warning("No .gwark directory found. Run 'gwark config init' first.")
+        raise typer.Exit(1)
+
+    config = load_config()
+    profiles_dir = config_dir / PROFILES_DIR
+
+    if not profiles_dir.exists():
+        print_info("No profiles directory found.")
+        return
+
+    profiles = list(profiles_dir.glob("*.yaml"))
+    if not profiles:
+        print_info("No profiles found.")
+        return
+
+    console.print("\n[bold]Available Profiles[/bold]\n")
+    for p in profiles:
+        name = p.stem
+        active = " [green](active)[/green]" if name == config.active_profile else ""
+        profile = get_profile(name)
+        desc = profile.description or "No description"
+        console.print(f"  [cyan]{name}[/cyan]{active}")
+        console.print(f"    {desc}")
+
+
+@profile_app.command("create")
+def profile_create(
+    name: str = typer.Argument(..., help="Profile name"),
+    description: str = typer.Option("", "--description", "-d", help="Profile description"),
+) -> None:
+    """Create a new profile."""
+    print_header(f"gwark config profile create {name}")
+
+    config_dir = find_config_dir()
+    if not config_dir:
+        print_warning("No .gwark directory found. Run 'gwark config init' first.")
+        raise typer.Exit(1)
+
+    profile_path = config_dir / PROFILES_DIR / f"{name}.yaml"
+    if profile_path.exists():
+        print_warning(f"Profile '{name}' already exists.")
+        raise typer.Exit(1)
+
+    profile = ProfileConfig(name=name, description=description)
+    save_profile(profile, config_dir)
+
+    print_success(f"Created profile: {profile_path}")
+    print_info("Edit the file to customize filters and settings.")
+
+
+@profile_app.command("delete")
+def profile_delete(
+    name: str = typer.Argument(..., help="Profile name to delete"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+) -> None:
+    """Delete a profile."""
+    config_dir = find_config_dir()
+    if not config_dir:
+        print_warning("No .gwark directory found.")
+        raise typer.Exit(1)
+
+    profile_path = config_dir / PROFILES_DIR / f"{name}.yaml"
+    if not profile_path.exists():
+        print_warning(f"Profile '{name}' not found.")
+        raise typer.Exit(1)
+
+    if name == "default":
+        print_warning("Cannot delete the default profile.")
+        raise typer.Exit(1)
+
+    if not force:
+        confirm = typer.confirm(f"Delete profile '{name}'?")
+        if not confirm:
+            raise typer.Abort()
+
+    profile_path.unlink()
+    print_success(f"Deleted profile: {name}")
+
+
+@auth_app.command("setup")
+def auth_setup(
+    account_id: str = typer.Option("primary", "--account-id", "-a", help="Account identifier"),
+    manual: bool = typer.Option(False, "--manual", help="Use manual authorization code flow"),
+) -> None:
+    """Set up OAuth2 authentication."""
+    print_header("gwark config auth setup")
+
+    try:
+        from gmail_mcp.auth import OAuth2Manager
+
+        config = load_config()
+        credentials_path = config.auth.credentials_path
+        tokens_path = config.auth.tokens_path
+
+        if not credentials_path.exists():
+            print_error(f"Credentials file not found: {credentials_path}")
+            print_info("Download OAuth2 credentials from Google Cloud Console")
+            print_info(f"Save as: {credentials_path}")
+            raise typer.Exit(1)
+
+        print_info(f"Using credentials: {credentials_path}")
+        print_info(f"Token storage: {tokens_path}")
+
+        manager = OAuth2Manager(
+            credentials_path=str(credentials_path),
+            token_storage_path=str(tokens_path),
+        )
+
+        print_info("Starting OAuth2 flow...")
+        print_info("A browser window will open for authentication.")
+
+        credentials = manager.get_credentials(account_id=account_id)
+
+        if credentials and credentials.valid:
+            print_success(f"Authentication successful for account: {account_id}")
+        else:
+            print_error("Authentication failed")
+            raise typer.Exit(1)
+
+    except ImportError as e:
+        print_error(f"Missing dependency: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        print_error(f"Setup failed: {e}")
+        raise typer.Exit(1)
+
+
+@auth_app.command("test")
+def auth_test() -> None:
+    """Test OAuth2 connection."""
+    print_header("gwark config auth test")
+
+    try:
+        from gmail_mcp.auth import get_gmail_service
+
+        print_info("Testing Gmail API connection...")
+
+        service = get_gmail_service()
+        profile = service.users().getProfile(userId="me").execute()
+
+        print_success("Connection successful!")
+        print_info(f"Email: {profile.get('emailAddress')}")
+        print_info(f"Total messages: {profile.get('messagesTotal')}")
+        print_info(f"Total threads: {profile.get('threadsTotal')}")
+
+    except Exception as e:
+        print_error(f"Connection failed: {e}")
+        raise typer.Exit(1)
+
+
+@auth_app.command("list")
+def auth_list() -> None:
+    """List configured accounts."""
+    print_header("gwark config auth list")
+
+    config = load_config()
+    tokens_path = Path(config.auth.tokens_path)
+
+    if not tokens_path.exists():
+        print_info("No accounts configured yet.")
+        print_info("Run 'gwark config auth setup' to add an account.")
+        return
+
+    token_files = list(tokens_path.glob("*.token"))
+    if not token_files:
+        print_info("No accounts configured yet.")
+        return
+
+    console.print("\n[bold]Configured Accounts[/bold]\n")
+    for tf in token_files:
+        account_id = tf.stem
+        default = " [green](default)[/green]" if account_id == config.auth.default_account else ""
+        console.print(f"  - [cyan]{account_id}[/cyan]{default}")
+
+
+@auth_app.command("remove")
+def auth_remove(
+    account_id: str = typer.Argument(..., help="Account to remove"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+) -> None:
+    """Remove an account's credentials."""
+    config = load_config()
+    tokens_path = Path(config.auth.tokens_path)
+    token_file = tokens_path / f"{account_id}.token"
+
+    if not token_file.exists():
+        print_warning(f"Account '{account_id}' not found.")
+        raise typer.Exit(1)
+
+    if not force:
+        confirm = typer.confirm(f"Remove account '{account_id}'?")
+        if not confirm:
+            raise typer.Abort()
+
+    token_file.unlink()
+    print_success(f"Removed account: {account_id}")
