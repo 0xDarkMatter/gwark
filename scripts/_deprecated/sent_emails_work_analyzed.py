@@ -266,6 +266,7 @@ def analyze_emails_with_ai(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]
             email['estimated_minutes'] = 15
         return emails
 
+    print(f"[DEBUG] Using API key: {api_key[:20]}...{api_key[-10:]}")
     client = Anthropic(api_key=api_key)
 
     print(f"[INFO] Analyzing {len(emails)} emails with AI...")

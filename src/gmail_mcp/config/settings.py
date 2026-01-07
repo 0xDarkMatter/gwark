@@ -12,6 +12,7 @@ from .constants import (
     DEFAULT_ACCOUNT_ID,
     DEFAULT_BATCH_SIZE,
     DEFAULT_CONNECTION_POOL_SIZE,
+    DEFAULT_MAX_CONCURRENT,
     DEFAULT_PAGE_SIZE,
     DEFAULT_RATE_LIMIT_BURST,
     DEFAULT_RATE_LIMIT_PER_SECOND,
@@ -110,6 +111,9 @@ class Settings(BaseSettings):
     enable_async: bool = Field(default=True, description="Enable async operations")
     connection_pool_size: int = Field(
         default=DEFAULT_CONNECTION_POOL_SIZE, description="Connection pool size"
+    )
+    max_concurrent: int = Field(
+        default=DEFAULT_MAX_CONCURRENT, description="Maximum concurrent API operations"
     )
 
     # Development

@@ -1,380 +1,207 @@
-# Gmail MCP Server
+# gwark
 
-A robust Model Context Protocol (MCP) server for Gmail integration, designed to handle large email volumes efficiently with smart caching, pagination, and batch operations.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**Google Workspace CLI** - A unified command-line tool for Gmail, Calendar, and Drive operations.
 
 ## Features
 
-- **Async Architecture**: Built on asyncio for high performance and concurrent operations
-- **Smart Caching**: SQLite-based caching reduces API calls for repeated queries
-- **Intelligent Pagination**: Cursor-based pagination management for large result sets
-- **Batch Operations**: Process multiple emails efficiently in parallel (up to 50 at a time)
-- **Advanced Filtering**: Rich query builder beyond basic Gmail search syntax
-- **Multi-Account Support**: Manage multiple Gmail accounts with encrypted token storage
-- **Rate Limiting**: Intelligent rate limiting to prevent API quota exhaustion
-- **Encrypted Token Storage**: Secure OAuth2 token storage with Fernet encryption
+- **Email Search & Export** - Search emails by domain, sender, subject with markdown/JSON/CSV output
+- **AI Summarization** - Generate email summaries using Claude Haiku
+- **Calendar Analysis** - Extract and filter calendar meetings
+- **Drive Activity** - Track file activity and changes
+- **Profile System** - Filter work vs personal content with YAML profiles
+- **High Performance** - Optimized for Google Workspace rate limits (250 req/sec)
 
 ## Quick Start
 
-### 1. Installation
-
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/gmail-mcp.git
-cd gmail-mcp
-
-# Install dependencies
+# Install
 pip install -e .
 
-# Or install with development dependencies
-pip install -e ".[dev]"
+# Initialize configuration
+gwark config init
+
+# Set up OAuth (opens browser)
+gwark config auth setup
+
+# Test connection
+gwark config auth test
 ```
 
-### 2. Google Cloud Setup
+## Commands
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the Gmail API
-4. Create OAuth2 credentials (Desktop App)
-5. Download the credentials JSON file
-6. Save it as `config/oauth2_credentials.json`
-
-See [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) for detailed instructions.
-
-### 3. Authentication
-
-```bash
-# Run the OAuth2 setup script
-python scripts/setup_oauth.py
-
-# Follow the prompts to authenticate
 ```
-
-### 4. Run the Server
-
-```bash
-# Run as a module
-python -m gmail_mcp
-
-# Or use the CLI command
-gmail-mcp
+gwark
+├── email
+│   ├── search      Search emails by domain/sender/query
+│   ├── sent        Analyze sent emails for a month
+│   └── summarize   AI summarize emails from JSON
+├── calendar
+│   └── meetings    Extract calendar meetings
+├── drive
+│   └── activity    Extract file activity
+└── config
+    ├── init        Initialize .gwark/ directory
+    ├── show        Display configuration
+    ├── auth        OAuth management (setup/test/list/remove)
+    └── profile     Profile management (list/create/delete)
 ```
-
-### 5. Configure Your MCP Client
-
-Add to your MCP client configuration (e.g., Claude Desktop):
-
-```json
-{
-  "mcpServers": {
-    "gmail": {
-      "command": "python",
-      "args": ["-m", "gmail_mcp"],
-      "cwd": "/path/to/gmail-mcp"
-    }
-  }
-}
-```
-
-## Email Search Utility
-
-A standalone command-line tool for searching and exporting Gmail emails with token-efficient operation.
-
-### Features
-
-- **AI-Powered Email Summaries** - Generate comprehensive summaries using Claude Haiku (overview + key bullet points)
-- **Token-efficient summary mode** (default) - Uses Gmail API `metadata` format for fast searches
-- **Markdown table output** - Compact one-email-per-line format with clickable Gmail links
-- **Optional preview snippets** - Show ~100 char email previews in summary tables
-- **Full detail mode** - Includes complete email bodies and attachments when needed
-- **Multiple export formats** - JSON, CSV, Text, Markdown
-- **Smart name extraction** - Automatically parses names from email addresses
-- **Flexible filtering** - Search by domain, sender, recipient, subject, or custom query
-
-### Quick Examples
-
-```bash
-# AI-powered email summaries (requires ANTHROPIC_API_KEY in .env)
-python scripts/email_search.py --domain example.com --format markdown --summarize
-
-# Quick summary search (fast, metadata only)
-python scripts/email_search.py --domain example.com --format markdown
-
-# Summary with preview snippets
-python scripts/email_search.py --domain example.com --format markdown --show-preview
-
-# Full detail search (includes bodies/attachments)
-python scripts/email_search.py --domain example.com --detail-level full --format markdown
-
-# Export to CSV for analysis
-python scripts/email_search.py --sender john@example.com --format csv --days-back 30
-
-# Custom Gmail query with attachments
-python scripts/email_search.py --query "has:attachment larger:5M" --days-back 60
-```
-
-### Output Formats
-
-#### Summary Mode (Default - Fast)
-- Uses Gmail API `metadata` format
-- Includes: subject, from, to, date, Gmail snippet
-- No email bodies or attachment details
-- **Perfect for quick email scanning**
-
-#### Full Mode (Slower)
-- Uses Gmail API `full` format
-- Includes: everything from summary + full email body + attachment details
-- Use when you need complete email content
-
-#### Markdown Table Format
-```markdown
-| Date | From → To | Subject | Link |
-|------|-----------|---------|------|
-| 30/10/2025 | John Doe → Jane Smith | Project Update | [View](gmail-link) |
-```
-
-With `--show-preview`:
-```markdown
-| Date | From → To | Subject | Preview | Link |
-|------|-----------|---------|---------|------|
-| 30/10/2025 | John Doe → Jane Smith | Project Update | Thanks for the update on the project... | [View](gmail-link) |
-```
-
-With `--summarize` (AI-powered summaries):
-```markdown
-| Date | From → To | Subject | Link |
-|------|-----------|---------|------|
-| 30/10/2025 | John Doe → Jane Smith | Project Update | [View](gmail-link) |
-|               - *Overview*: John Doe provides a status update on the Q4 project timeline and budget allocation.|
-|               - Project is 80% complete with delivery scheduled for Friday                                    |
-|               - Database migration issue resolved with workaround                                             |
-|               - Requesting latest financial projections for the meeting                                       |
-|                                                                                                               |
-```
-
-**AI Summarization Details:**
-- Automatically generates 1-2 sentence overview + 2-4 key bullet points per email
-- Uses Claude Haiku for fast, cost-effective summaries
-- Processes emails in batches of 10 for efficiency
-- Requires `ANTHROPIC_API_KEY` in `.env` file
-- Forces `full` detail level to access complete email bodies
-- Summaries displayed as merged table rows for clean formatting
-
-### All Options
-
-```bash
-# Search filters
---domain DOMAIN              # Domain to search (e.g., 'example.com')
---sender EMAIL               # Sender email address
---recipient EMAIL            # Recipient email address
---subject TEXT               # Subject line search term
---query QUERY                # Raw Gmail query (overrides other filters)
-
-# Date range
---days-back N                # Days to look back (default: 180)
-
-# Output options
---max-results N              # Maximum results (default: 500)
---format FORMAT              # json, csv, text, markdown (default: json)
---detail-level LEVEL         # summary (fast) or full (slow) (default: summary)
---show-preview               # Show email snippets in markdown tables
---summarize                  # Generate AI summaries using Claude Haiku (requires API key)
-
-# Account
---account-id ID              # Gmail account ID (default: primary)
-```
-
-Results are saved to the `reports/` directory with timestamps.
-
-## Available Tools
-
-### Search & Read
-
-- `search_emails` - Search emails with pagination support
-- `read_email` - Read a specific email by ID
-- `batch_read` - Read multiple emails in parallel
-
-### Labels & Organization
-
-- `list_labels` - List all Gmail labels
-- `apply_labels` - Add/remove labels from an email
-- `remove_labels` - Remove labels from an email
-- `batch_apply_labels` - Apply/remove labels from multiple emails
-
-### Quick Actions
-
-- `mark_as_read` / `mark_as_unread` - Mark emails as read/unread
-- `archive` - Archive emails (remove from INBOX)
-- `star` / `unstar` - Star/unstar emails
-
-### Account
-
-- `get_profile` - Get user profile information
 
 ## Usage Examples
 
-### Search for Unread Emails
+### Email Search
 
-```python
-{
-  "query": "is:unread",
-  "max_results": 100,
-  "page_size": 50
-}
+```bash
+# Search emails from a domain (last 30 days)
+gwark email search --domain example.com --format markdown
+
+# With AI summarization
+gwark email search --domain example.com --summarize
+
+# Custom query with date range
+gwark email search --query "has:attachment larger:5M" --days 60
+
+# Export to CSV
+gwark email search --sender john@example.com --format csv --max-results 100
 ```
 
-### Search with Advanced Filters
+### Calendar
 
-```python
-{
-  "query": "from:example@gmail.com after:2024/01/01 has:attachment",
-  "max_results": 200
-}
+```bash
+# Get meetings for last 30 days
+gwark calendar meetings --days 30
+
+# Work meetings only (filters personal items)
+gwark calendar meetings --work-only --profile work
 ```
 
-### Read an Email
+### Drive
 
-```python
-{
-  "message_id": "18c5a1b2f3d4e5f6",
-  "format": "full"
-}
+```bash
+# File activity for a month
+gwark drive activity --year 2025 --month 1
 ```
 
-### Batch Read Multiple Emails
+## Configuration
 
-```python
-{
-  "message_ids": ["msg_001", "msg_002", "msg_003"],
-  "format": "metadata"
-}
+gwark uses a `.gwark/` directory for project-local configuration:
+
+```
+.gwark/
+├── config.yaml          # Main settings
+└── profiles/
+    ├── default.yaml     # Default profile (no filters)
+    └── work.yaml        # Work-only filters
 ```
 
-### Apply Labels
+### Profiles
 
-```python
-{
-  "message_id": "18c5a1b2f3d4e5f6",
-  "label_ids": ["Label_123"],
-  "remove_labels": ["INBOX"]
-}
+Use profiles to filter content:
+
+```bash
+# Use work profile (excludes personal items)
+gwark email search --domain company.com --profile work
+gwark calendar meetings --profile work
+```
+
+Edit `.gwark/profiles/work.yaml` to customize filters:
+
+```yaml
+filters:
+  email:
+    exclude_senders:
+      - no-reply@
+      - notifications@
+    exclude_subjects:
+      - "Out of Office"
+  calendar:
+    work_only: true
+    exclude_keywords:
+      - personal
+      - family
+      - dentist
+```
+
+## Google Cloud Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing
+3. Enable APIs: Gmail, Calendar, Drive
+4. Create OAuth2 credentials (Desktop App)
+5. Download credentials JSON
+6. Save as `config/oauth2_credentials.json`
+
+See [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) for detailed instructions.
+
+## Environment Variables
+
+Create a `.env` file for additional settings:
+
+```env
+# AI Summarization (optional)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Rate limiting (Google Workspace defaults)
+RATE_LIMIT_PER_SECOND=250
+MAX_CONCURRENT=10
+
+# Logging
+LOG_LEVEL=INFO
 ```
 
 ## Architecture
 
 ```
-GmailMCP/
-├── src/gmail_mcp/
-│   ├── auth/          # OAuth2 authentication & token management
-│   ├── gmail/         # Gmail API client & operations
-│   ├── cache/         # SQLite caching & pagination
-│   ├── server/        # MCP server implementation
-│   ├── utils/         # Utilities (logging, rate limiting, validators)
-│   └── config/        # Configuration management
-├── tests/             # Test suite
-├── docs/              # Documentation
-├── scripts/           # Setup & utility scripts
-└── examples/          # Usage examples
+gwark/
+├── src/
+│   ├── gwark/              # CLI tool
+│   │   ├── commands/       # Typer command modules
+│   │   ├── core/           # Utilities (config, output, dates)
+│   │   └── schemas/        # Pydantic config models
+│   └── gmail_mcp/          # Core library (OAuth, API clients, cache)
+├── .gwark/                 # Project configuration
+├── config/                 # OAuth credentials
+├── data/                   # Token storage
+└── reports/                # Generated reports
 ```
 
-## Configuration
+## Rate Limits
 
-Environment variables (create a `.env` file):
+Optimized for Google Workspace business accounts:
 
-```env
-LOG_LEVEL=INFO
-CACHE_ENABLED=true
-CACHE_TTL_SECONDS=3600
-DEFAULT_PAGE_SIZE=100
-MAX_BATCH_SIZE=50
-RATE_LIMIT_PER_SECOND=10
-```
-
-See [.env.example](.env.example) for all available options.
-
-## Performance Optimizations for Large Volumes
-
-### Caching Strategy
-
-- **Metadata Cache**: 1-hour TTL for email metadata
-- **Content Cache**: Full email content cached with configurable TTL
-- **Search Results Cache**: Query results cached to reduce repeated searches
-- **Automatic Cleanup**: Expired entries removed automatically
-
-### Pagination
-
-- **Cursor-Based**: Efficient pagination using Gmail's page tokens
-- **State Management**: Pagination state persisted for resumable operations
-- **Smart Batching**: Configurable page sizes (10-500 results)
-
-### Batch Operations
-
-- **Parallel Processing**: Up to 50 emails processed concurrently
-- **Semaphore Control**: Limits concurrent API calls
-- **Fallback Strategy**: Individual operations if batch fails
-- **Partial Success**: Returns both successful and failed operations
-
-### Rate Limiting
-
-- **Token Bucket Algorithm**: Respects Gmail API quotas (250 units/user/second)
-- **Automatic Throttling**: Backs off on rate limit errors
-- **Burst Support**: Allows short bursts within limits
+| Limit | Value |
+|-------|-------|
+| Per-user quota | 15,000 queries/min (250/sec) |
+| Project quota | 1,200,000 queries/min |
+| Concurrent ops | 10 (configurable to 50) |
 
 ## Development
-
-### Setup Development Environment
 
 ```bash
 # Install with dev dependencies
 pip install -e ".[dev]"
 
-# Install pre-commit hooks
-pre-commit install
-
 # Run tests
 pytest
-
-# Run tests with coverage
-pytest --cov=gmail_mcp --cov-report=html
 
 # Format code
 black src/ tests/
 ruff check src/ tests/
-
-# Type checking
-mypy src/
 ```
 
-### Project Structure
+## Roadmap
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture documentation.
-
-## Documentation
-
-- [Setup Guide](docs/SETUP.md) - Detailed installation and configuration
-- [OAuth2 Setup](docs/OAUTH_SETUP.md) - Google Cloud Console setup
-- [API Documentation](docs/API.md) - Complete tool reference
-- [Architecture](docs/ARCHITECTURE.md) - Design decisions and patterns
-- [Performance Guide](docs/PERFORMANCE.md) - Optimization tips
-
-## Troubleshooting
-
-See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues and solutions.
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting pull requests.
+- [ ] MCP Server for Claude Desktop integration
+- [ ] Summary caching to avoid re-processing
+- [ ] Retry logic with exponential backoff
+- [ ] Multi-account support
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## Acknowledgments
+---
 
-- Built with [MCP SDK](https://github.com/anthropics/mcp)
-- Gmail API by Google
-- Inspired by the need for better email management in large-volume environments
-
-## Support
-
-- Issues: https://github.com/yourusername/gmail-mcp/issues
-- Discussions: https://github.com/yourusername/gmail-mcp/discussions
+Built with [Typer](https://typer.tiangolo.com/) and [Rich](https://rich.readthedocs.io/)

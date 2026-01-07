@@ -1,0 +1,27 @@
+# Default profile - no filters
+name: default
+description: Default profile with no filters applied
+
+filters:
+  email:
+    domains: []
+    senders: []
+    exclude_senders: []
+    exclude_subjects: []
+    exclude_domains: []
+
+  calendar:
+    work_only: false
+    work_domains: []
+    exclude_keywords: []
+    include_declined: false
+
+  drive:
+    exclude_folders: []
+    include_shared_drives: true
+    owned_only: false
+
+settings:
+  days_back: 30
+  max_results: 500
+  output_format: markdown
