@@ -1,363 +1,183 @@
-# Gmail MCP Server - Claude Code Development Guide
+# gwark - Claude Code Development Guide
 
-This document provides comprehensive information about the Gmail MCP Server project for Claude Code and other AI assistants.
+Google Workspace CLI tool for Gmail, Calendar, and Drive operations.
 
 ## Project Overview
 
-The Gmail MCP Server is a Model Context Protocol (MCP) server that provides robust Gmail integration with advanced features for handling large email volumes efficiently. It includes smart caching, pagination, batch operations, and AI-powered email summarization.
+**gwark** is a unified CLI built with Typer for interacting with Google Workspace APIs. It provides email search, calendar analysis, and drive activity tracking with YAML-based configuration and profile support.
 
-## Current Project Status
+## Quick Reference
 
-**Branch:** `feature/email-summarization`
-**Last Updated:** October 31, 2025
+```bash
+# Test CLI
+python -m gwark --help
+python -m gwark config auth test
+python -m gwark email search --domain example.com --days 7 --max-results 5
 
-### Recent Development
-
-We recently implemented AI-powered email summarization using Claude Haiku API:
-- Batch processing (10 emails per API call)
-- Comprehensive summaries (overview + 2-4 key bullet points)
-- Markdown table output with merged column format
-- Token-efficient operation using Claude Haiku
+# Run specific command
+gwark email search --domain company.com --format markdown
+gwark calendar meetings --work-only
+gwark config show
+```
 
 ## Project Structure
 
 ```
-GmailMCP/
-├── src/gmail_mcp/          # Main MCP server code (not yet implemented)
-│   ├── auth/               # OAuth2 authentication
-│   ├── gmail/              # Gmail API client
-│   ├── cache/              # SQLite caching
-│   ├── server/             # MCP server
-│   └── utils/              # Utilities
-├── scripts/                # Standalone utility scripts
-│   ├── setup_oauth.py      # OAuth2 setup script
-│   ├── email_search.py     # Email search & export utility
-│   ├── email_summarizer.py # AI email summarization module
-│   └── test_connection.py  # Connection test script
-├── config/                 # Configuration files
-│   └── oauth2_credentials.json  # Google OAuth2 credentials
-├── data/                   # Data storage
-│   ├── tokens/             # Encrypted OAuth2 tokens
-│   └── cache/              # Email cache database
-├── reports/                # Email search export reports
-├── tests/                  # Test suite
-├── docs/                   # Documentation
-├── .env                    # Environment variables (gitignored)
-└── README.md               # Main documentation
+gwark/
+├── src/
+│   ├── gwark/                  # CLI tool (Typer-based)
+│   │   ├── commands/           # Command modules
+│   │   │   ├── email.py        # email search/sent/summarize
+│   │   │   ├── calendar.py     # calendar meetings
+│   │   │   ├── drive.py        # drive activity
+│   │   │   └── config.py       # config init/show/auth/profile
+│   │   ├── core/               # Utilities
+│   │   │   ├── config.py       # YAML config loading
+│   │   │   ├── output.py       # Formatters (md/json/csv)
+│   │   │   ├── dates.py        # Date parsing
+│   │   │   └── email_utils.py  # Email extraction
+│   │   ├── schemas/            # Pydantic models
+│   │   │   └── config.py       # GwarkConfig, ProfileConfig
+│   │   └── main.py             # Typer app entry point
+│   │
+│   └── gmail_mcp/              # Core library
+│       ├── auth/               # OAuth2 management
+│       ├── gmail/              # Gmail API client
+│       ├── cache/              # SQLite caching
+│       └── config/             # Settings & constants
+│
+├── .gwark/                     # Project configuration
+│   ├── config.yaml             # Main settings
+│   └── profiles/               # Filter profiles
+│       ├── default.yaml
+│       └── work.yaml
+│
+├── config/                     # OAuth credentials
+├── data/tokens/                # Encrypted OAuth tokens
+├── reports/                    # Generated output files
+└── scripts/                    # Standalone utilities
 ```
 
-## Key Features Implemented
+## Key Files
 
-### 1. Email Search Utility (`scripts/email_search.py`)
+| File | Purpose |
+|------|---------|
+| `src/gwark/main.py` | Typer app with subcommand registration |
+| `src/gwark/commands/email.py` | Email search using sync Gmail API |
+| `src/gwark/core/config.py` | YAML config loading with Pydantic |
+| `.gwark/config.yaml` | Main configuration (rate limits, AI, auth) |
+| `.gwark/profiles/work.yaml` | Work profile with personal item filters |
 
-A standalone command-line tool for searching and exporting Gmail emails.
+## Configuration
 
-**Features:**
-- Token-efficient metadata searches
-- Full detail mode with bodies and attachments
-- AI-powered summarization using Claude Haiku
-- Multiple export formats (JSON, CSV, Text, Markdown)
-- Smart name extraction from email addresses
-- Flexible filtering (domain, sender, recipient, subject, custom query)
-- Markdown table output with clickable Gmail links
+### .gwark/config.yaml
 
-**Usage Examples:**
+```yaml
+version: "1.0"
+defaults:
+  days_back: 30
+  max_results: 500
+  output_format: markdown
+
+auth:
+  credentials_path: config/oauth2_credentials.json
+  tokens_path: data/tokens
+
+ai:
+  model: claude-3-haiku-20240307
+  batch_size: 10
+
+gmail:
+  rate_limit_per_second: 250
+  max_concurrent: 10  # Increase to 50 for stable networks
+
+active_profile: default
+```
+
+### Profiles
+
+Profiles filter content (work vs personal):
+
+```yaml
+# .gwark/profiles/work.yaml
+filters:
+  email:
+    exclude_senders: [no-reply@, notifications@]
+    exclude_subjects: ["Out of Office"]
+  calendar:
+    work_only: true
+    exclude_keywords: [personal, family, dentist]
+```
+
+## Development Notes
+
+### Email Search Implementation
+
+The email search uses **sync API calls** (not async batch) for reliability:
+
+```python
+# src/gwark/commands/email.py:137-162
+service = get_gmail_service()
+for msg_id in message_ids:
+    email_data = service.users().messages().get(
+        userId="me", id=msg_id, format=api_format
+    ).execute()
+```
+
+This avoids SSL errors that occurred with concurrent batch operations.
+
+### Rate Limits
+
+Optimized for Google Workspace:
+- 250 requests/second per user
+- 10 concurrent (conservative default, can increase to 50)
+- 1.2M queries/minute project-wide
+
+### Dependencies
+
+- **typer[all]** - CLI framework
+- **rich** - Console output
+- **pyyaml** - Configuration
+- **pydantic** - Schema validation
+- **google-api-python-client** - Google APIs
+- **anthropic** - AI summarization (optional)
+
+## Common Tasks
+
+### Adding a New Command
+
+1. Create `src/gwark/commands/newcmd.py`
+2. Define Typer app: `app = typer.Typer()`
+3. Register in `src/gwark/main.py`: `app.add_typer(newcmd.app, name="newcmd")`
+
+### Adding Profile Filters
+
+Edit `src/gwark/schemas/config.py` to add new filter types, then update profile YAML files.
+
+### Testing
+
 ```bash
-# AI-powered summaries
-python scripts/email_search.py --domain example.com --format markdown --summarize
+# Quick test
+python -m gwark email search --domain test.com --days 1 --max-results 3
 
-# Quick metadata search
-python scripts/email_search.py --domain example.com --format markdown
-
-# Full detail with attachments
-python scripts/email_search.py --domain example.com --detail-level full --format markdown
-
-# Export to CSV
-python scripts/email_search.py --sender john@example.com --format csv --days-back 30
+# Full test with AI
+python -m gwark email search --domain test.com --summarize --max-results 5
 ```
 
-### 2. AI Email Summarization (`scripts/email_summarizer.py`)
-
-Batch email summarization using Claude Haiku API.
-
-**Features:**
-- Batch processing (10 emails per API call for efficiency)
-- Comprehensive summaries (1-2 sentence overview + 2-4 key points)
-- Uses Claude Haiku (claude-3-haiku-20240307) for cost-effectiveness
-- Smart parsing of numbered email responses
-- Processes up to 2500 characters per email body
-- 4000 max tokens for comprehensive summaries
-
-**Output Format:**
-```markdown
-| Date | From → To | Subject | Link |
-|------|-----------|---------|------|
-| 30/10/2025 | John Doe → Jane Smith | Project Update | [View](link) |
-|               - *Overview*: Status update on Q4 project timeline and budget allocation.|
-|               - Project is 80% complete with Friday delivery                            |
-|               - Database migration issue resolved                                       |
-|               - Requesting financial projections for meeting                            |
-|                                                                                         |
-```
-
-### 3. OAuth2 Authentication (`scripts/setup_oauth.py`)
-
-Handles Google OAuth2 authentication flow for Gmail API access.
-
-**Features:**
-- Desktop application OAuth2 flow
-- Token storage and management
-- Automatic token refresh
-- Encrypted token storage
-
-## Environment Configuration
-
-### Required Environment Variables
-
-The `.env` file contains the following configuration:
+## Environment
 
 ```env
-# Server Configuration
-SERVER_NAME="Gmail MCP Server"
-SERVER_VERSION="0.1.0"
-LOG_LEVEL="INFO"
-
-# OAuth2 Configuration
-OAUTH2_CREDENTIALS_PATH="config/oauth2_credentials.json"
-TOKEN_STORAGE_PATH="data/tokens"
-ENCRYPTION_KEY=""  # Auto-generated
-
-# Cache Configuration
-CACHE_ENABLED="true"
-CACHE_DB_PATH="data/cache/email_cache.db"
-CACHE_TTL_SECONDS="3600"
-MAX_CACHE_SIZE_MB="500"
-
-# Gmail API Configuration
-DEFAULT_PAGE_SIZE="100"
-MAX_BATCH_SIZE="50"
-MAX_RESULTS_PER_SEARCH="500"
-
-# Rate Limiting
-RATE_LIMIT_ENABLED="true"
-RATE_LIMIT_PER_SECOND="10"
-RATE_LIMIT_BURST="20"
-
-# AI Summarization (Claude API)
-ANTHROPIC_API_KEY="your-api-key-here"
+ANTHROPIC_API_KEY=sk-ant-...  # For AI summarization
+LOG_LEVEL=INFO
 ```
 
-### Setting up ANTHROPIC_API_KEY
+## Git Branch
 
-For AI email summarization:
-1. Get your API key from Claude Code or the Anthropic Console
-2. Add it to `.env`: `ANTHROPIC_API_KEY="sk-ant-..."`
-3. If using Claude Code's API key, it's tied to your Max plan (no extra cost)
+Currently on `feature/email-summarization` branch.
 
-## Development Workflow
+## Status
 
-### Git Branches
-
-- `master` - Main stable branch
-- `feature/email-summarization` - Current development branch with AI summarization
-
-### Recent Commits
-
-```
-f581182 feat: Add AI-powered email summarization using Claude Haiku
-20fecd0 docs: Add email search utility documentation to README
-578ec33 feat: Add --show-preview flag for email snippet display in summary tables
-```
-
-### Commit Message Format
-
-We use conventional commits:
-```
-feat: Add new feature
-fix: Bug fix
-docs: Documentation changes
-refactor: Code refactoring
-test: Add tests
-chore: Maintenance tasks
-```
-
-All commits include:
-```
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
-
-## Technical Implementation Details
-
-### Email Search Architecture
-
-1. **Gmail API Integration**
-   - Uses Google's Gmail API v1
-   - Supports two detail levels: `metadata` (fast) and `full` (complete)
-   - Async/await pattern for concurrent operations
-
-2. **Markdown Output Format**
-   - Compact table format with one email per row
-   - Clickable Gmail links (`https://mail.google.com/mail/u/0/#all/{id}`)
-   - Smart name extraction (e.g., "John Doe <john@example.com>" → "John Doe")
-   - AI summaries as merged table rows for clean formatting
-
-3. **AI Summarization Pipeline**
-   ```
-   Gmail API → Fetch Full Emails → Batch (10) → Claude Haiku → Parse Summaries → Markdown Output
-   ```
-
-### Error Handling
-
-- Rate limit detection with backoff strategy
-- Partial success handling for batch operations
-- Graceful degradation when API key is missing
-- Error placeholders for failed summarizations
-
-### Performance Optimizations
-
-- Batch processing (10 emails per API call)
-- Uses Claude Haiku (fastest/cheapest model)
-- Limits email body to 2500 characters
-- Async operations for Gmail API calls
-
-## Testing
-
-### Manual Testing Process
-
-1. **Quick Test (7 days)**
-   ```bash
-   python scripts/email_search.py --domain example.com --days-back 7 --format markdown --summarize
-   ```
-
-2. **Full Test (180 days)**
-   ```bash
-   python scripts/email_search.py --domain example.com --days-back 180 --max-results 100 --format markdown --summarize
-   ```
-
-3. **Verify Output**
-   - Check `reports/` directory for generated markdown
-   - Verify summaries are comprehensive and accurate
-   - Ensure table formatting is correct
-
-### Test Results
-
-Successfully tested with:
-- 61 real emails from grandprix.com.au domain
-- 7 API call batches (6x10 emails + 1x1 email)
-- Generated comprehensive summaries with overview + bullets
-- Clean markdown table output
-
-## Known Issues & Limitations
-
-### Rate Limiting
-
-- **Issue:** Anthropic API has rate limits for new accounts
-- **Symptom:** Error 429 when making rapid API calls
-- **Workaround:** Add delays between batches or reduce batch frequency
-- **Future Fix:** Implement automatic retry with exponential backoff
-
-### API Key Management
-
-- **Current:** API key stored in `.env` (gitignored)
-- **Security:** Never commit `.env` to version control
-- **Note:** `.env` is already in `.gitignore`
-
-### Email Body Truncation
-
-- **Limitation:** Email bodies limited to 2500 characters
-- **Reason:** Token efficiency and API cost management
-- **Impact:** Very long emails may have incomplete summaries
-
-## Future Development
-
-### Planned Features
-
-1. **MCP Server Implementation**
-   - Complete MCP protocol server
-   - Tool registration for Claude Desktop
-   - Real-time email operations
-
-2. **Enhanced Summarization**
-   - Automatic rate limit handling with retries
-   - Configurable summary length
-   - Multi-language support
-   - Summary caching to avoid re-processing
-
-3. **Additional Tools**
-   - Email sending functionality
-   - Draft management
-   - Calendar integration
-   - Contact management
-
-4. **Performance Improvements**
-   - Persistent cache for summaries
-   - Incremental updates
-   - Background processing
-
-## Claude Code Integration
-
-### Using with Claude Code
-
-Claude Code can assist with:
-1. Understanding the codebase
-2. Implementing new features
-3. Debugging issues
-4. Writing tests
-5. Updating documentation
-
-### Example Prompts
-
-```
-"Add rate limiting to the email summarizer"
-"Create unit tests for email_search.py"
-"Implement summary caching to avoid re-processing"
-"Add support for multiple languages in summaries"
-"Create a web interface for email search"
-```
-
-## Dependencies
-
-### Python Packages
-
-```
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
-anthropic
-python-dotenv
-aiohttp
-asyncio
-```
-
-### Installation
-
-```bash
-pip install -e .
-# Or with dev dependencies
-pip install -e ".[dev]"
-```
-
-## Resources
-
-- [Gmail API Documentation](https://developers.google.com/gmail/api)
-- [Anthropic API Documentation](https://docs.anthropic.com/)
-- [MCP Protocol](https://github.com/anthropics/mcp)
-- [OAuth2 Setup Guide](docs/OAUTH_SETUP.md)
-
-## Contact & Support
-
-This project was developed with assistance from Claude Code.
-
-For issues and questions:
-- Check existing documentation in `docs/`
-- Review the README.md
-- Examine code comments for implementation details
-
----
-
-**Last Updated:** October 31, 2025
-**Version:** 0.1.0
-**Status:** Active Development (feature/email-summarization branch)
+- CLI: Working
+- Email search: Working (sync API)
+- Calendar/Drive: Commands defined, need testing with real APIs
+- MCP Server: Deferred to future release
