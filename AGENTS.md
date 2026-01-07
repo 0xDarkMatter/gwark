@@ -41,8 +41,8 @@ src/
 
 - Project config lives in `.gwark/config.yaml`
 - Profiles in `.gwark/profiles/*.yaml` filter content (work vs personal)
-- OAuth credentials: `config/oauth2_credentials.json`
-- Tokens stored in: `data/tokens/`
+- OAuth credentials: `.gwark/credentials/oauth2_credentials.json`
+- Tokens stored in: `.gwark/tokens/`
 
 ### Output Formats
 
@@ -89,5 +89,5 @@ python -m gwark email search --domain example.com --days 1 --max-results 3
 ## Don't
 
 - Don't use async batch operations for Gmail (causes SSL errors)
-- Don't commit `.env` or `config/oauth2_credentials.json`
+- Don't commit `.env` or `.gwark/credentials/oauth2_credentials.json`
 - Don't hardcode API keys

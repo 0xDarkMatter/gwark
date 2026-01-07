@@ -314,7 +314,7 @@ Examples:
         print("\nMake sure you've set up OAuth2 credentials:")
         print("  1. Enable Calendar API in Google Cloud Console")
         print("  2. Download OAuth2 credentials")
-        print("  3. Save as config/oauth2_credentials.json")
+        print("  3. Save as .gwark/credentials/oauth2_credentials.json")
         return 1
 
 

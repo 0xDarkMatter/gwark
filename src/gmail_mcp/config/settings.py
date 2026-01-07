@@ -44,11 +44,11 @@ class Settings(BaseSettings):
 
     # OAuth2 Configuration
     oauth2_credentials_path: Path = Field(
-        default=Path("config/oauth2_credentials.json"),
+        default=Path(".gwark/credentials/oauth2_credentials.json"),
         description="Path to OAuth2 credentials file",
     )
     token_storage_path: Path = Field(
-        default=Path("data/tokens"), description="Directory for storing OAuth2 tokens"
+        default=Path(".gwark/tokens"), description="Directory for storing OAuth2 tokens"
     )
     encryption_key: Optional[str] = Field(
         default=None, description="Fernet encryption key for tokens"
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # Cache Configuration
     cache_enabled: bool = Field(default=True, description="Enable caching")
     cache_db_path: Path = Field(
-        default=Path("data/cache/email_cache.db"), description="SQLite cache database path"
+        default=Path(".gwark/cache/email_cache.db"), description="SQLite cache database path"
     )
     cache_ttl_seconds: int = Field(
         default=CACHE_TTL_SECONDS, description="Cache TTL in seconds"

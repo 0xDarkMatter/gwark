@@ -117,7 +117,7 @@ async def test_connection(account_id: str = "primary") -> bool:
         print_error(f"Connection test failed: {e}")
         print_info("Troubleshooting:")
         print_info("  1. Run: python scripts/setup_oauth.py")
-        print_info("  2. Check config/oauth2_credentials.json exists")
+        print_info("  2. Check .gwark/credentials/oauth2_credentials.json exists")
         print_info("  3. Verify Gmail API is enabled in Google Cloud Console")
         return False
 

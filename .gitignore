@@ -135,22 +135,22 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Gmail MCP specific
-data/
-!data/.gitkeep
-logs/
-!logs/.gitkeep
+# gwark runtime (user-specific, secrets, state)
+.gwark/
+
+# Output reports (regeneratable)
 reports/
 !reports/.gitkeep
+
+# Database files
 *.db
 *.sqlite
 *.sqlite3
 
-# OAuth2 credentials and tokens
-config/oauth2_credentials.json
-config/server_config.yaml
+# Token files
 *.token
 *.credentials
+*.pickle
 
 # IDE
 .vscode/
@@ -160,6 +160,5 @@ config/server_config.yaml
 *~
 .DS_Store
 
-# Pre-commit
-.pre-commit-config.yaml
+# Claude Code
 .claude/

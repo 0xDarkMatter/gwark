@@ -1,0 +1,53 @@
+# Work profile - filters for work-related items only
+name: work
+description: Filters to show only work-related emails, meetings, and files
+
+filters:
+  email:
+    # Include only emails from these domains (empty = all)
+    domains: []
+    senders: []
+
+    # Exclude automated/system emails
+    exclude_senders:
+      - no-reply@
+      - noreply@
+      - notifications@
+      - donotreply@
+      - mailer-daemon@
+
+    # Exclude emails with these subject patterns
+    exclude_subjects:
+      - "Out of Office"
+      - "Automatic reply"
+      - "Undeliverable"
+      - "Delivery Status"
+
+    exclude_domains: []
+
+  calendar:
+    work_only: true
+    work_domains: []  # Add your work domain(s)
+
+    # Keywords to exclude (personal items)
+    exclude_keywords:
+      - family
+      - personal
+      - dentist
+      - doctor
+      - birthday
+      - vacation
+
+    include_declined: false
+
+  drive:
+    exclude_folders:
+      - Personal
+      - Private
+    include_shared_drives: true
+    owned_only: false
+
+settings:
+  days_back: 60
+  max_results: 500
+  output_format: markdown

@@ -73,13 +73,13 @@ Review the summary and click "BACK TO DASHBOARD"
 1. A dialog will appear with your Client ID and Client Secret
 2. Click "DOWNLOAD JSON"
 3. Save the file as `oauth2_credentials.json`
-4. Move this file to `config/oauth2_credentials.json` in your Gmail MCP project directory
+4. Move this file to `.gwark/credentials/oauth2_credentials.json` in your Gmail MCP project directory
 
 **Important**: Keep this file secure! It contains sensitive credentials.
 
 ## Step 5: Verify Credentials File
 
-Your `config/oauth2_credentials.json` should look like this:
+Your `.gwark/credentials/oauth2_credentials.json` should look like this:
 
 ```json
 {
@@ -143,15 +143,15 @@ python scripts/test_connection.py
 ### Protect Your Credentials
 
 1. **Never commit credentials to version control**
-   - `config/oauth2_credentials.json` is in `.gitignore`
-   - `data/tokens/` is in `.gitignore`
+   - `.gwark/credentials/oauth2_credentials.json` is in `.gitignore`
+   - `.gwark/tokens/` is in `.gitignore`
 
 2. **File Permissions**
    - The setup script automatically sets restrictive permissions
    - Tokens are encrypted with Fernet
 
 3. **Token Storage**
-   - Tokens are stored in `data/tokens/`
+   - Tokens are stored in `.gwark/tokens/`
    - Each account has a separate encrypted token file
    - Refresh tokens allow automatic re-authentication
 
@@ -162,7 +162,7 @@ If you need to revoke access:
 1. Go to [Google Account Permissions](https://myaccount.google.com/permissions)
 2. Find "Gmail MCP Server"
 3. Click "Remove Access"
-4. Delete local tokens: `rm -rf data/tokens/*`
+4. Delete local tokens: `rm -rf .gwark/tokens/*`
 
 ## Scope Explanations
 
@@ -218,7 +218,7 @@ If you want to use this with multiple accounts without adding each as a test use
 **Cause**: Refresh token expired or revoked
 
 **Solution**:
-1. Delete existing tokens: `rm data/tokens/primary.token`
+1. Delete existing tokens: `rm .gwark/tokens/primary.token`
 2. Re-run setup: `python scripts/setup_oauth.py`
 
 ### "insufficient_scope" Error
