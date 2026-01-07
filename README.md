@@ -3,16 +3,18 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Google Workspace CLI** - A unified command-line tool for Gmail, Calendar, and Drive operations.
+**Your inbox, calendar, and drive — tamed from the terminal.**
 
-## Features
+gwark is a command-line power tool for Google Workspace. Search thousands of emails in seconds, get AI-powered summaries of what actually matters, and finally answer "what did I even do last month?" without clicking through endless UI.
 
-- **Email Search & Export** - Search emails by domain, sender, subject with markdown/JSON/CSV output
-- **AI Summarization** - Generate email summaries using Claude Haiku
-- **Calendar Analysis** - Extract and filter calendar meetings
-- **Drive Activity** - Track file activity and changes
-- **Profile System** - Filter work vs personal content with YAML profiles
-- **High Performance** - Optimized for Google Workspace rate limits (250 req/sec)
+## Why gwark?
+
+- **Blazing Fast Email Search** — Query by domain, sender, or raw Gmail syntax. Export to markdown, JSON, or CSV. Done.
+- **AI Summaries That Don't Suck** — Claude Haiku distills email threads into bullet points you'll actually read
+- **Calendar Forensics** — Pull meeting history, filter out the noise, see where your time *really* went
+- **Drive Activity Tracking** — What changed? When? Finally, answers.
+- **Work/Life Separation** — Profile system filters out personal stuff when you need to focus (or vice versa)
+- **Google Workspace Native** — Built for business accounts with 250 req/sec throughput
 
 ## Quick Start
 
