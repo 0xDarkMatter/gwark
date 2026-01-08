@@ -635,11 +635,11 @@ class TerminalCalendarViewer:
         return {}
 
     def _format_time(self, iso_str: str) -> str:
-        """Format ISO time to HH:MM."""
+        """Format ISO time to 12hr format with am/pm."""
         try:
             from datetime import datetime
             dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-            return dt.strftime("%H:%M")
+            return dt.strftime("%I:%M%p").lstrip("0").lower()  # "9:30am" not "09:30AM"
         except:
             return iso_str[:5] if iso_str else "--:--"
 
@@ -659,17 +659,43 @@ class TerminalCalendarViewer:
         h, m = divmod(minutes, 60)
         return f"{h}h{m}m" if m else f"{h}h"
 
-    def _is_multi_day(self, meeting: dict) -> bool:
-        """Check if event spans multiple days."""
-        minutes = meeting.get("duration_minutes", 0)
-        return minutes >= 1440  # 24+ hours
+    def _is_all_day(self, meeting: dict) -> bool:
+        """Check if event is an all-day event (no specific time)."""
+        start = meeting.get("start", "")
+        # All-day events typically have date-only format or 00:00 start
+        if "T" not in start:
+            return True
+        if "T00:00:00" in start:
+            return True
+        return False
 
-    def _format_date_range(self, start: str, end: str) -> str:
-        """Format a date range for multi-day events."""
+    def _is_multi_day(self, meeting: dict) -> bool:
+        """Check if event spans multiple calendar days."""
+        from datetime import datetime
+        start = meeting.get("start", "")
+        end = meeting.get("end", "")
+        try:
+            start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            # Multi-day if different dates (not just duration > 24h)
+            return start_dt.date() != end_dt.date()
+        except:
+            minutes = meeting.get("duration_minutes", 0)
+            return minutes >= 1440
+
+    def _format_date_range(self, start: str, end: str, force_range: bool = False) -> str:
+        """Format a date range for multi-day events. Single all-day events just show one date."""
         from datetime import datetime
         try:
             start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
             end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+
+            # For single-day all-day events, just show the date
+            if start_dt.date() == end_dt.date() or (
+                (end_dt - start_dt).days <= 1 and not force_range
+            ):
+                return start_dt.strftime("%b %d")
+
             start_str = start_dt.strftime("%b %d")
             end_str = end_dt.strftime("%b %d")
             if start_dt.year != end_dt.year:
@@ -718,21 +744,24 @@ class TerminalCalendarViewer:
                     break
 
                 is_selected = current_idx == self.selected
+                is_all_day = self._is_all_day(m)
                 is_multi = self._is_multi_day(m)
 
-                # For multi-day events, show date range instead of time
-                if is_multi:
-                    time_str = self._format_date_range(m.get("start", ""), m.get("end", ""))[:11]
+                # Determine time display
+                if is_all_day and not is_multi:
+                    time_str = "all day"
+                elif is_multi:
+                    time_str = self._format_date_range(m.get("start", ""), m.get("end", ""), force_range=True)[:11]
                 else:
                     time_str = self._format_time(m.get("start", ""))
 
                 duration = self._format_duration(m.get("duration_minutes", 0))
-                summary = m.get("summary", "No Title")[:30]
+                summary = m.get("summary", "No Title")[:32]
 
                 marker = "▸" if is_selected else " "
                 style = "reverse bold" if is_selected else None
 
-                line = f" {marker} {time_str:>11}  {summary:<30} {duration:>8}\n"
+                line = f" {marker} {time_str:>8}  {summary:<32} {duration:>6}\n"
                 lines.append(line, style=style)
                 current_idx += 1
 
@@ -753,28 +782,35 @@ class TerminalCalendarViewer:
 
         content = Text()
 
-        # Title - prominent and readable
-        content.append(m.get("summary", "No Title") + "\n", style="bold bright_white")
-        content.append("─" * 40 + "\n\n", style="dim")
+        # Title - prominent and readable, ABOVE separator
+        content.append(m.get("summary", "No Title") + "\n\n", style="bold bright_white")
+        content.append("· · · · · · · · · · · · · · · · · · · ·\n\n", style="dim")
 
         # Time / Date Range
+        is_all_day = self._is_all_day(m)
         is_multi = self._is_multi_day(m)
-        if is_multi:
-            date_range = self._format_date_range(m.get("start", ""), m.get("end", ""))
+
+        if is_all_day and not is_multi:
+            # Single all-day event
+            date_str = self._format_date_range(m.get("start", ""), m.get("end", ""))
+            content.append("When:       ", style="dim")
+            content.append(f"{date_str} (all day)\n\n")
+        elif is_multi:
+            date_range = self._format_date_range(m.get("start", ""), m.get("end", ""), force_range=True)
             duration = self._format_duration(m.get("duration_minutes", 0))
-            content.append("Time:       ", style="dim")
+            content.append("When:       ", style="dim")
             content.append(f"{date_range} ({duration})\n\n")
         else:
             start_time = self._format_time(m.get("start", ""))
             end_time = self._format_time(m.get("end", ""))
             duration = self._format_duration(m.get("duration_minutes", 0))
-            content.append("Time:       ", style="dim")
+            content.append("When:       ", style="dim")
             content.append(f"{start_time} - {end_time} ({duration})\n\n")
 
         # Location
         location = m.get("location", "")
         if location:
-            content.append("Location:   ", style="dim")
+            content.append("Where:      ", style="dim")
             content.append(f"{location}\n\n")
 
         # Organizer - with label
@@ -793,7 +829,7 @@ class TerminalCalendarViewer:
         attendees = m.get("attendees", [])
         if attendees:
             content.append("Attendees:\n", style="dim")
-            for att in attendees[:6]:
+            for att in attendees[:5]:
                 # att could be email string or dict with displayName
                 if isinstance(att, dict):
                     name = att.get("displayName", "")
@@ -808,18 +844,18 @@ class TerminalCalendarViewer:
                 content.append(f"  • {name}\n", style="white")
                 if email:
                     content.append(f"    {email}\n", style="dim")
-            if len(attendees) > 6:
-                content.append(f"  ... +{len(attendees) - 6} more\n", style="dim")
+            if len(attendees) > 5:
+                content.append(f"  ... +{len(attendees) - 5} more\n", style="dim")
             content.append("\n")
 
-        # Description
+        # Description (compact)
         desc = m.get("description", "")
         if desc:
-            content.append("Notes:\n", style="dim")
-            # Strip HTML and limit length
-            desc = strip_html(desc)[:400]
-            for line in desc.split("\n")[:8]:
-                content.append(f"  {line}\n")
+            content.append("· · ·\n", style="dim")
+            desc = strip_html(desc)[:300]
+            for line in desc.split("\n")[:5]:
+                if line.strip():
+                    content.append(f"{line[:50]}\n", style="dim")
 
         return Panel(
             content,
@@ -831,23 +867,27 @@ class TerminalCalendarViewer:
     def _render(self) -> None:
         """Render split pane view using Layout for tight spacing."""
         from rich.layout import Layout
-        from rich.table import Table
+        import shutil
 
         self.console.clear()
+
+        # Get actual terminal dimensions
+        term_height = shutil.get_terminal_size().lines
 
         left = self._build_left_pane()
         right = self._build_right_pane()
 
-        # Use Layout for tighter control
+        # Use Layout for tighter control - constrain to terminal
         layout = Layout()
         layout.split_row(
             Layout(left, name="left", ratio=1),
             Layout(right, name="right", ratio=1),
         )
 
-        self.console.print(layout, height=self.console.height - 3)
-        self.console.print()
-        self.console.print("[dim]↑↓ Navigate | PgUp/PgDn: Week | Enter/o: Open | q: Quit[/]")
+        # Print layout with fixed height to prevent scrolling
+        max_height = max(10, term_height - 4)
+        self.console.print(layout, height=max_height)
+        self.console.print("[dim]↑↓ Nav | PgUp/Dn: Week | o: Open | [y]es [n]o [m]aybe | q: Quit[/]")
 
     def _getch(self) -> str:
         """Get a single keypress."""
@@ -900,15 +940,35 @@ class TerminalCalendarViewer:
         if link:
             webbrowser.open(link)
 
+    def _update_rsvp(self, response: str) -> None:
+        """Update RSVP for selected meeting (placeholder - needs API call)."""
+        m = self._get_selected_meeting()
+        if not m:
+            return
+
+        response_map = {"y": "accepted", "n": "declined", "m": "tentative"}
+        status = response_map.get(response, "accepted")
+        event_id = m.get("id", "")
+
+        # For now, just show feedback - actual API call would go here
+        # TODO: Implement Calendar API RSVP update
+        self.rsvp_feedback = f"RSVP: {status.title()} (API update not yet implemented)"
+
     def run(self) -> None:
         """Run the calendar viewer."""
         if not self.flat_list:
             self.console.print("[yellow]No meetings to display[/]")
             return
 
+        self.rsvp_feedback = None
+
         try:
             while True:
                 self._render()
+                if self.rsvp_feedback:
+                    self.console.print(f"[yellow]{self.rsvp_feedback}[/]")
+                    self.rsvp_feedback = None
+
                 key = self._getch()
 
                 if key in ('q', 'esc'):
@@ -918,7 +978,7 @@ class TerminalCalendarViewer:
                 elif key == 'down' or key == 'j':
                     self.selected = min(len(self.flat_list) - 1, self.selected + 1)
                 elif key == 'pgup':
-                    # Jump back ~7 days worth of events (or page_size)
+                    # Jump back ~7 days worth of events
                     self.selected = max(0, self.selected - 7)
                 elif key == 'pgdn':
                     # Jump forward ~7 days worth of events
@@ -929,6 +989,8 @@ class TerminalCalendarViewer:
                     self.selected = len(self.flat_list) - 1
                 elif key in ('enter', 'o'):
                     self._open_meeting()
+                elif key in ('y', 'n', 'm'):
+                    self._update_rsvp(key)
         except (KeyboardInterrupt, EOFError):
             pass
         finally:
