@@ -587,20 +587,32 @@ class TerminalCalendarViewer:
         from datetime import timedelta
         return d - timedelta(days=d.weekday())
 
-    def _select_first_in_week(self) -> None:
-        """Select first event in current week."""
+    def _get_week_events(self) -> list:
+        """Get indices of events in current week view."""
         from datetime import datetime, timedelta
         week_end = self.current_week_monday + timedelta(days=6 if self.show_weekends else 4)
 
+        indices = []
         for i, (day_key, _, m) in enumerate(self.flat_list):
             try:
                 event_date = datetime.fromisoformat(m.get("start", "").replace("Z", "+00:00")).date()
                 if self.current_week_monday <= event_date <= week_end:
-                    self.selected = i
-                    return
+                    indices.append(i)
             except:
                 pass
-        # No events in week, keep current selection
+        return indices
+
+    def _select_first_in_week(self) -> None:
+        """Select first event in current week."""
+        indices = self._get_week_events()
+        if indices:
+            self.selected = indices[0]
+
+    def _select_last_in_week(self) -> None:
+        """Select last event in current week."""
+        indices = self._get_week_events()
+        if indices:
+            self.selected = indices[-1]
 
     def _is_working_location(self, meeting: dict) -> bool:
         """Check if event is a Working Location (Home/Office), not a real event."""
@@ -797,6 +809,9 @@ class TerminalCalendarViewer:
                     line = f"   {marker} {time_str:>8}  {summary:<26} {duration:>5}\n"
                     lines.append(line, style=style)
 
+        # Add trailing space for height
+        lines.append("\n")
+
         # Count for title
         week_events = sum(1 for dk, _, _ in self.flat_list
                         if self.current_week_monday <= self._parse_date(dk) <= week_end)
@@ -805,7 +820,7 @@ class TerminalCalendarViewer:
             lines,
             title=f"[bold]{self.title}[/] ({week_events} events)",
             border_style="blue",
-            padding=(0, 0),
+            padding=(1, 1),
         )
 
     def _parse_date(self, day_key: str):
@@ -906,7 +921,7 @@ class TerminalCalendarViewer:
             content,
             title="Details",
             border_style="green",
-            padding=(0, 1),
+            padding=(1, 1),
         )
 
     def _render(self) -> None:
@@ -1020,9 +1035,41 @@ class TerminalCalendarViewer:
                 if key in ('q', 'esc'):
                     break
                 elif key == 'up' or key == 'k':
-                    self.selected = max(0, self.selected - 1)
+                    # Navigate within week only, flip if at boundary
+                    week_events = self._get_week_events()
+                    if week_events:
+                        try:
+                            current_pos = week_events.index(self.selected)
+                            if current_pos > 0:
+                                self.selected = week_events[current_pos - 1]
+                            else:
+                                # At first event, flip to previous week
+                                self.current_week_monday -= timedelta(days=7)
+                                self._select_last_in_week()
+                        except ValueError:
+                            self._select_first_in_week()
+                    else:
+                        # No events in week, flip back
+                        self.current_week_monday -= timedelta(days=7)
+                        self._select_last_in_week()
                 elif key == 'down' or key == 'j':
-                    self.selected = min(len(self.flat_list) - 1, self.selected + 1)
+                    # Navigate within week only, flip if at boundary
+                    week_events = self._get_week_events()
+                    if week_events:
+                        try:
+                            current_pos = week_events.index(self.selected)
+                            if current_pos < len(week_events) - 1:
+                                self.selected = week_events[current_pos + 1]
+                            else:
+                                # At last event, flip to next week
+                                self.current_week_monday += timedelta(days=7)
+                                self._select_first_in_week()
+                        except ValueError:
+                            self._select_first_in_week()
+                    else:
+                        # No events in week, flip forward
+                        self.current_week_monday += timedelta(days=7)
+                        self._select_first_in_week()
                 elif key == 'pgup':
                     # Previous week
                     self.current_week_monday -= timedelta(days=7)
