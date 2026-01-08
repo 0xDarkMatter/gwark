@@ -30,5 +30,12 @@ gmail:
   rate_limit_burst: 100
   max_concurrent: 10
 
+# Calendar settings
+calendar:
+  calendars:
+    - primary
+    - mknv74@gmail.com
+    - mack@roamhq.io
+
 # Active profile (profiles stored in .gwark/profiles/)
 active_profile: default
