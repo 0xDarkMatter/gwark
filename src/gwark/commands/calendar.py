@@ -57,9 +57,16 @@ def meetings(
         service = get_calendar_service()
 
         # Calculate time range
+        # For interactive mode, load extra buffer (month before and after)
         now = datetime.utcnow()
-        time_min = (now - timedelta(days=days)).isoformat() + "Z"
-        time_max = now.isoformat() + "Z"
+        if interactive:
+            # Load 30 days before and 30 days after for smooth navigation
+            time_min = (now - timedelta(days=max(days, 30))).isoformat() + "Z"
+            time_max = (now + timedelta(days=30)).isoformat() + "Z"
+            print_info(f"Interactive mode: loading extended range for smooth navigation")
+        else:
+            time_min = (now - timedelta(days=days)).isoformat() + "Z"
+            time_max = now.isoformat() + "Z"
 
         print_info(f"Fetching events from {time_min[:10]} to {time_max[:10]}...")
 
