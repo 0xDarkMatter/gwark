@@ -924,7 +924,7 @@ class TerminalCalendarViewer:
             content.append("Organiser:\n", style="dim")
             org_name = organizer.split("@")[0].replace(".", " ").title() if "@" in organizer else organizer
             # If combined length too long, put email on next line
-            if len(org_name) + len(organizer) > 35:
+            if len(org_name) + len(organizer) > 45:
                 content.append(f"  • {org_name}\n", style="bold")
                 content.append(f"    ({organizer})\n\n", style="dim")
             else:
@@ -946,7 +946,7 @@ class TerminalCalendarViewer:
                     name = att.split("@")[0].replace(".", " ").title() if "@" in att else att
 
                 # If combined length too long, put email on next line
-                if len(name) + len(email) > 35:
+                if len(name) + len(email) > 45:
                     content.append(f"  • {name}\n", style="bold")
                     content.append(f"    ({email})\n", style="dim")
                 else:
