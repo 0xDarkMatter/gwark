@@ -751,17 +751,19 @@ class TerminalCalendarViewer:
                 if is_all_day and not is_multi:
                     time_str = "all day"
                 elif is_multi:
-                    time_str = self._format_date_range(m.get("start", ""), m.get("end", ""), force_range=True)[:11]
+                    # Don't truncate date ranges
+                    time_str = self._format_date_range(m.get("start", ""), m.get("end", ""), force_range=True)
                 else:
                     time_str = self._format_time(m.get("start", ""))
 
                 duration = self._format_duration(m.get("duration_minutes", 0))
-                summary = m.get("summary", "No Title")[:32]
+                summary = m.get("summary", "No Title")[:28]
 
                 marker = "▸" if is_selected else " "
                 style = "reverse bold" if is_selected else None
 
-                line = f" {marker} {time_str:>8}  {summary:<32} {duration:>6}\n"
+                # Variable width for time column
+                line = f" {marker} {time_str:>15}  {summary:<28} {duration:>6}\n"
                 lines.append(line, style=style)
                 current_idx += 1
 
@@ -783,7 +785,8 @@ class TerminalCalendarViewer:
         content = Text()
 
         # Title - prominent and readable, ABOVE separator
-        content.append(m.get("summary", "No Title") + "\n\n", style="bold bright_white")
+        title = m.get("summary") or "No Title"
+        content.append(f"{title}\n", style="bold reverse")
         content.append("· · · · · · · · · · · · · · · · · · · ·\n\n", style="dim")
 
         # Time / Date Range
@@ -865,28 +868,26 @@ class TerminalCalendarViewer:
         )
 
     def _render(self) -> None:
-        """Render split pane view using Layout for tight spacing."""
-        from rich.layout import Layout
+        """Render split pane view - simple side by side."""
+        from rich.table import Table
         import shutil
 
         self.console.clear()
 
-        # Get actual terminal dimensions
-        term_height = shutil.get_terminal_size().lines
+        # Get terminal dimensions
+        term_size = shutil.get_terminal_size()
+        self.page_size = max(8, term_size.lines - 8)  # Dynamic page size
 
         left = self._build_left_pane()
         right = self._build_right_pane()
 
-        # Use Layout for tighter control - constrain to terminal
-        layout = Layout()
-        layout.split_row(
-            Layout(left, name="left", ratio=1),
-            Layout(right, name="right", ratio=1),
-        )
+        # Simple table layout - no Layout class
+        table = Table.grid(expand=True)
+        table.add_column(ratio=1)
+        table.add_column(ratio=1)
+        table.add_row(left, right)
 
-        # Print layout with fixed height to prevent scrolling
-        max_height = max(10, term_height - 4)
-        self.console.print(layout, height=max_height)
+        self.console.print(table)
         self.console.print("[dim]↑↓ Nav | PgUp/Dn: Week | o: Open | [y]es [n]o [m]aybe | q: Quit[/]")
 
     def _getch(self) -> str:
