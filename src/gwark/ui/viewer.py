@@ -923,10 +923,15 @@ class TerminalCalendarViewer:
         if organizer:
             content.append("Organiser:\n", style="dim")
             org_name = organizer.split("@")[0].replace(".", " ").title() if "@" in organizer else organizer
-            content.append(f"  • {org_name} ", style="bold")
-            content.append(f"({organizer})\n\n", style="dim")
+            # If combined length too long, put email on next line
+            if len(org_name) + len(organizer) > 35:
+                content.append(f"  • {org_name}\n", style="bold")
+                content.append(f"    ({organizer})\n\n", style="dim")
+            else:
+                content.append(f"  • {org_name} ", style="bold")
+                content.append(f"({organizer})\n\n", style="dim")
 
-        # Attendees - ONE LINE format: {name} (email)
+        # Attendees - name (email), wrap long emails to next line
         attendees = m.get("attendees", [])
         if attendees:
             content.append("Attendees:\n", style="dim")
@@ -940,8 +945,13 @@ class TerminalCalendarViewer:
                     email = att
                     name = att.split("@")[0].replace(".", " ").title() if "@" in att else att
 
-                content.append(f"  • {name} ", style="bold")
-                content.append(f"({email})\n", style="dim")
+                # If combined length too long, put email on next line
+                if len(name) + len(email) > 35:
+                    content.append(f"  • {name}\n", style="bold")
+                    content.append(f"    ({email})\n", style="dim")
+                else:
+                    content.append(f"  • {name} ", style="bold")
+                    content.append(f"({email})\n", style="dim")
             if len(attendees) > 8:
                 content.append(f"  ... +{len(attendees) - 8} more\n", style="dim")
             content.append("\n")
