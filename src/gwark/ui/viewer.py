@@ -854,7 +854,7 @@ class TerminalCalendarViewer:
         content = Text()
 
         # Title - prominent and readable
-        title = m.get("summary") or "No Title"
+        title = (m.get("summary") or "No Title").strip()
         content.append(f"{title}\n", style="bold reverse")
         content.append(self.SEPARATOR + "\n\n", style="dim")
 
@@ -871,23 +871,23 @@ class TerminalCalendarViewer:
 
         if is_all_day and not is_multi:
             date_str = self._format_date_range(m.get("start", ""), m.get("end", ""))
-            content.append("When:       ", style="dim")
+            content.append("🕐 When:     ", style="dim")
             content.append(f"{date_str} (all day)\n\n")
         elif is_multi:
             date_range = self._format_date_range(m.get("start", ""), m.get("end", ""), force_range=True)
             duration = self._format_duration(m.get("duration_minutes", 0))
-            content.append("When:       ", style="dim")
+            content.append("🕐 When:     ", style="dim")
             content.append(f"{date_range} ({duration})\n\n")
         else:
             start_time = self._format_time(m.get("start", ""))
             end_time = self._format_time(m.get("end", ""))
             duration = self._format_duration(m.get("duration_minutes", 0))
-            content.append("When:       ", style="dim")
+            content.append("🕐 When:     ", style="dim")
             content.append(f"{start_time} - {end_time} ({duration})\n\n")
 
         # Location - ALWAYS show (even if empty), with proper indentation for wrapping
         location = m.get("location", "")
-        content.append("Location:   ", style="dim")
+        content.append("📍 Location: ", style="dim")
         if location:
             # Wrap long locations with indentation
             loc_lines = []
@@ -915,7 +915,7 @@ class TerminalCalendarViewer:
         # Google Meet link (if exists)
         meet_link = m.get("meet_link", "")
         if meet_link:
-            content.append("Meet:       ", style="dim")
+            content.append("📹 Meet:     ", style="dim")
             content.append(f"{meet_link}\n\n", style="cyan underline")
 
         # Organizer
@@ -925,10 +925,10 @@ class TerminalCalendarViewer:
             org_name = organizer.split("@")[0].replace(".", " ").title() if "@" in organizer else organizer
             # If combined length too long, put email on next line
             if len(org_name) + len(organizer) > 45:
-                content.append(f"  • {org_name}\n", style="bold")
-                content.append(f"    ({organizer})\n\n", style="dim")
+                content.append(f"  👤 {org_name}\n", style="bold")
+                content.append(f"     ({organizer})\n\n", style="dim")
             else:
-                content.append(f"  • {org_name} ", style="bold")
+                content.append(f"  👤 {org_name} ", style="bold")
                 content.append(f"({organizer})\n\n", style="dim")
 
         # Attendees - name (email), wrap long emails to next line
@@ -947,10 +947,10 @@ class TerminalCalendarViewer:
 
                 # If combined length too long, put email on next line
                 if len(name) + len(email) > 45:
-                    content.append(f"  • {name}\n", style="bold")
-                    content.append(f"    ({email})\n", style="dim")
+                    content.append(f"  👤 {name}\n", style="bold")
+                    content.append(f"     ({email})\n", style="dim")
                 else:
-                    content.append(f"  • {name} ", style="bold")
+                    content.append(f"  👤 {name} ", style="bold")
                     content.append(f"({email})\n", style="dim")
             if len(attendees) > 8:
                 content.append(f"  ... +{len(attendees) - 8} more\n", style="dim")
