@@ -724,7 +724,7 @@ class TerminalCalendarViewer:
     def _build_left_pane(self) -> Panel:
         """Build week view with Monday at top."""
         from rich.text import Text
-        from datetime import timedelta
+        from datetime import timedelta, date
 
         lines = Text()
 
@@ -742,23 +742,30 @@ class TerminalCalendarViewer:
             day_date = self.current_week_monday + timedelta(days=day_offset)
             day_key = day_date.strftime("%Y-%m-%d")
             is_weekend = day_offset >= 5  # Sat=5, Sun=6
+            is_today = day_date == date.today()
 
             # Day styling
-            day_style = "dim" if is_weekend else "bold cyan"
+            if is_today:
+                day_style = "bold yellow"
+            elif is_weekend:
+                day_style = "dim"
+            else:
+                day_style = "bold cyan"
             day_label = day_date.strftime("%a, %b %d")
 
             # Get working location if any
             day_data = self.grouped.get(day_key, {"label": day_label, "meetings": [], "location": None})
             location = day_data.get("location")
             location_str = f" ({location})" if location else ""
+            today_marker = " ★" if is_today else ""
 
             # Day header with location
-            lines.append(f" {day_label}{location_str}\n", style=day_style)
+            lines.append(f"\n {day_label}{location_str}{today_marker}\n", style=day_style)
 
             # Events for this day
             meetings = day_data.get("meetings", [])
             if not meetings:
-                lines.append("   [dim]—[/]\n")
+                lines.append("    (no events)\n", style="dim")
             else:
                 for m in meetings:
                     # Find this meeting's index in flat_list
@@ -787,7 +794,7 @@ class TerminalCalendarViewer:
                     base_style = "dim" if is_weekend else None
                     style = "reverse bold" if is_selected else base_style
 
-                    line = f"  {marker} {time_str:>8}  {summary:<26} {duration:>5}\n"
+                    line = f"   {marker} {time_str:>8}  {summary:<26} {duration:>5}\n"
                     lines.append(line, style=style)
 
         # Count for title
@@ -924,7 +931,7 @@ class TerminalCalendarViewer:
 
         self.console.print(table)
         wknd = "hide" if self.show_weekends else "show"
-        self.console.print(f"[dim]↑↓ Nav | PgUp/Dn: ←→Week | [w]: {wknd} wknd | [t]: Today | o: Open | q: Quit[/]")
+        self.console.print(f"[dim]↑↓ Nav | PgUp/Dn: Week | w={wknd} wknd | t=Today | o=Open | y/n/m=RSVP | q=Quit[/]")
 
     def _getch(self) -> str:
         """Get a single keypress."""
