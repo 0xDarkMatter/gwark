@@ -921,9 +921,9 @@ class TerminalCalendarViewer:
         # Organizer
         organizer = m.get("organizer", "")
         if organizer:
-            content.append("Organiser:  ", style="dim")
+            content.append("Organiser:\n", style="dim")
             org_name = organizer.split("@")[0].replace(".", " ").title() if "@" in organizer else organizer
-            content.append(f"{org_name} ")
+            content.append(f"  • {org_name} ", style="bold")
             content.append(f"({organizer})\n\n", style="dim")
 
         # Attendees - ONE LINE format: {name} (email)
