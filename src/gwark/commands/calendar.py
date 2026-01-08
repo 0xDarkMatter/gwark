@@ -55,24 +55,21 @@ def list_calendars() -> None:
         calendars = calendar_list.get("items", [])
         print_success(f"Found {len(calendars)} calendars\n")
 
-        table = Table(title="Available Calendars", show_lines=False)
+        table = Table(title="Available Calendars", show_lines=False, expand=True)
         table.add_column("", width=2)  # Color dot
-        table.add_column("Name", style="bold")
-        table.add_column("ID (use with -C flag)")
-        table.add_column("Access")
+        table.add_column("Name", style="bold", no_wrap=True)
+        table.add_column("ID (use with -C flag)", overflow="fold")
 
         for cal in calendars:
             color = cal.get("backgroundColor", "#4285f4")
             name = cal.get("summary", "Unnamed")
             cal_id = cal.get("id", "")
-            access = cal.get("accessRole", "reader")
             primary = " (primary)" if cal.get("primary") else ""
 
             table.add_row(
                 f"[{color}]●[/]",
                 f"{name}{primary}",
-                cal_id if len(cal_id) < 50 else cal_id[:47] + "...",
-                access,
+                cal_id,
             )
 
         console.print(table)
