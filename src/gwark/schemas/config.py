@@ -81,6 +81,16 @@ class AIConfig(BaseModel):
     max_body_chars: int = Field(default=2500, description="Max characters of email body to send")
 
 
+class CalendarConfig(BaseModel):
+    """Calendar-specific configuration."""
+
+    calendars: list[str] = Field(
+        default_factory=lambda: ["primary"],
+        description="Calendar IDs to fetch (default: primary)"
+    )
+    default_days: int = Field(default=30, description="Default days to look back for calendar")
+
+
 class DefaultsConfig(BaseModel):
     """Default settings."""
 
@@ -98,6 +108,7 @@ class GwarkConfig(BaseModel):
     defaults: DefaultsConfig = Field(default_factory=DefaultsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
+    calendar: CalendarConfig = Field(default_factory=CalendarConfig)
     active_profile: str = Field(default="default", description="Active profile name")
 
     class Config:

@@ -564,6 +564,9 @@ class EmailViewer(ResultsViewer):
 class TerminalCalendarViewer:
     """Week-based calendar viewer with Monday at top."""
 
+    # Consistent separator style (closer dots)
+    SEPARATOR = "·" * 45
+
     def __init__(self, meetings: list[dict[str, Any]], title: str = "Calendar") -> None:
         from datetime import date, timedelta
 
@@ -578,6 +581,10 @@ class TerminalCalendarViewer:
         # Week navigation - start on Monday of current week
         today = date.today()
         self.current_week_monday = today - timedelta(days=today.weekday())  # Monday
+
+        # Description scroll (for long descriptions)
+        self.desc_scroll = 0
+        self.desc_max_lines = 6
 
         # Find first event in current week
         self._select_first_in_week()
@@ -745,7 +752,7 @@ class TerminalCalendarViewer:
         week_end = self.current_week_monday + timedelta(days=6)
         week_label = f"{self.current_week_monday.strftime('%b %d')} - {week_end.strftime('%b %d')}"
         lines.append(f" Week of {week_label}\n", style="bold")
-        lines.append("─" * 50 + "\n", style="dim")
+        lines.append(self.SEPARATOR + "\n", style="dim")
 
         # Days to show (Mon-Sun or Mon-Fri)
         days_to_show = 7 if self.show_weekends else 5
@@ -801,14 +808,19 @@ class TerminalCalendarViewer:
                         time_str = self._format_time(m.get("start", ""))
 
                     duration = self._format_duration(m.get("duration_minutes", 0))
-                    summary = m.get("summary", "No Title")[:26]
+                    summary = m.get("summary", "No Title")[:24]
 
                     marker = "▸" if is_selected else " "
                     base_style = "dim" if is_weekend else None
                     style = "reverse bold" if is_selected else base_style
 
-                    line = f"   {marker} {time_str:>8}  {summary:<26} {duration:>5}\n"
-                    lines.append(line, style=style)
+                    # Calendar color dot
+                    cal_color = m.get("calendar_color", "#4285f4")
+
+                    # Build line with color dot
+                    lines.append(f"   {marker} ", style=style)
+                    lines.append("●", style=cal_color)  # Colored dot
+                    lines.append(f" {time_str:>8}  {summary:<24} {duration:>5}\n", style=style)
 
         # Add trailing space for height
         lines.append("\n")
@@ -842,17 +854,23 @@ class TerminalCalendarViewer:
 
         content = Text()
 
-        # Title - prominent and readable, ABOVE separator
+        # Title - prominent and readable
         title = m.get("summary") or "No Title"
         content.append(f"{title}\n", style="bold reverse")
-        content.append("· · · · · · · · · · · · · · · · · · · ·\n\n", style="dim")
+        content.append(self.SEPARATOR + "\n\n", style="dim")
+
+        # Calendar source (with colored dot)
+        cal_name = m.get("calendar_name", "Primary")
+        cal_color = m.get("calendar_color", "#4285f4")
+        content.append("Calendar:   ", style="dim")
+        content.append("● ", style=cal_color)
+        content.append(f"{cal_name}\n\n")
 
         # Time / Date Range
         is_all_day = self._is_all_day(m)
         is_multi = self._is_multi_day(m)
 
         if is_all_day and not is_multi:
-            # Single all-day event
             date_str = self._format_date_range(m.get("start", ""), m.get("end", ""))
             content.append("When:       ", style="dim")
             content.append(f"{date_str} (all day)\n\n")
@@ -868,55 +886,62 @@ class TerminalCalendarViewer:
             content.append("When:       ", style="dim")
             content.append(f"{start_time} - {end_time} ({duration})\n\n")
 
-        # Location
+        # Location - ALWAYS show (even if empty)
         location = m.get("location", "")
-        if location:
-            content.append("Where:      ", style="dim")
-            content.append(f"{location}\n\n")
+        content.append("Location:   ", style="dim")
+        content.append(f"{location or '(none)'}\n\n")
 
-        # Organizer - with label
+        # Google Meet link (if exists)
+        meet_link = m.get("meet_link", "")
+        if meet_link:
+            content.append("Meet:       ", style="dim")
+            content.append(f"{meet_link}\n\n", style="cyan underline")
+
+        # Organizer
         organizer = m.get("organizer", "")
         if organizer:
             content.append("Organiser:  ", style="dim")
-            # Show name if available, otherwise email prefix
-            org_name = organizer.split("@")[0] if "@" in organizer else organizer
-            content.append(f"{org_name}\n")
-            if "@" in organizer:
-                content.append("            ", style="dim")
-                content.append(f"{organizer}\n", style="dim")
-            content.append("\n")
+            org_name = organizer.split("@")[0].replace(".", " ").title() if "@" in organizer else organizer
+            content.append(f"{org_name} ")
+            content.append(f"({organizer})\n\n", style="dim")
 
-        # Attendees - two-line format with name and email
+        # Attendees - ONE LINE format: {name} (email)
         attendees = m.get("attendees", [])
         if attendees:
             content.append("Attendees:\n", style="dim")
-            for att in attendees[:5]:
-                # att could be email string or dict with displayName
+            for att in attendees[:8]:
+                # att is now a dict with name/email/status
                 if isinstance(att, dict):
-                    name = att.get("displayName", "")
+                    name = att.get("name", "Unknown")
                     email = att.get("email", "")
-                    if not name and email:
-                        name = email.split("@")[0].replace(".", " ").title()
                 else:
-                    # It's just an email string
+                    # Fallback for old format (just email string)
                     email = att
                     name = att.split("@")[0].replace(".", " ").title() if "@" in att else att
 
-                content.append(f"  • {name}\n", style="white")
-                if email:
-                    content.append(f"    {email}\n", style="dim")
-            if len(attendees) > 5:
-                content.append(f"  ... +{len(attendees) - 5} more\n", style="dim")
+                content.append(f"  • {name} ", style="white")
+                content.append(f"({email})\n", style="dim")
+            if len(attendees) > 8:
+                content.append(f"  ... +{len(attendees) - 8} more\n", style="dim")
             content.append("\n")
 
-        # Description (compact)
+        # Description - FULL with scroll support
         desc = m.get("description", "")
         if desc:
-            content.append("· · ·\n", style="dim")
-            desc = strip_html(desc)[:300]
-            for line in desc.split("\n")[:5]:
-                if line.strip():
-                    content.append(f"{line[:50]}\n", style="dim")
+            content.append(self.SEPARATOR + "\n", style="dim")
+            desc_clean = strip_html(desc)
+            desc_lines = [line for line in desc_clean.split("\n") if line.strip()]
+
+            if len(desc_lines) > self.desc_max_lines:
+                # Scrollable description
+                visible = desc_lines[self.desc_scroll:self.desc_scroll + self.desc_max_lines]
+                for line in visible:
+                    content.append(f"{line[:55]}\n", style="dim")
+                pct = int((self.desc_scroll / max(1, len(desc_lines) - self.desc_max_lines)) * 100)
+                content.append(f"[{pct}% - </>: scroll]\n", style="dim italic")
+            else:
+                for line in desc_lines:
+                    content.append(f"{line[:55]}\n", style="dim")
 
         return Panel(
             content,
@@ -947,7 +972,7 @@ class TerminalCalendarViewer:
 
         self.console.print(table)
         wknd = "hide" if self.show_weekends else "show"
-        self.console.print(f"[dim]↑↓ Nav | PgUp/Dn: Week | w={wknd} wknd | t=Today | o=Open | y/n/m=RSVP | q=Quit[/]")
+        self.console.print(f"[dim]↑↓ Nav | PgUp/Dn: Week | </>: Scroll desc | w={wknd} wknd | t=Today | o=Open | q=Quit[/]")
 
     def _getch(self) -> str:
         """Get a single keypress."""
@@ -1038,6 +1063,7 @@ class TerminalCalendarViewer:
                 elif key == 'up' or key == 'k':
                     # Navigate within week only, flip if at boundary
                     week_events = self._get_week_events()
+                    old_selected = self.selected
                     if week_events:
                         if self.selected in week_events:
                             current_pos = week_events.index(self.selected)
@@ -1055,9 +1081,13 @@ class TerminalCalendarViewer:
                         # No events in week, flip back
                         self.current_week_monday -= timedelta(days=7)
                         self._select_last_in_week()
+                    # Reset description scroll when selection changes
+                    if self.selected != old_selected:
+                        self.desc_scroll = 0
                 elif key == 'down' or key == 'j':
                     # Navigate within week only, flip if at boundary
                     week_events = self._get_week_events()
+                    old_selected = self.selected
                     if week_events:
                         if self.selected in week_events:
                             current_pos = week_events.index(self.selected)
@@ -1075,14 +1105,19 @@ class TerminalCalendarViewer:
                         # No events in week, flip forward
                         self.current_week_monday += timedelta(days=7)
                         self._select_first_in_week()
+                    # Reset description scroll when selection changes
+                    if self.selected != old_selected:
+                        self.desc_scroll = 0
                 elif key == 'pgup':
                     # Previous week
                     self.current_week_monday -= timedelta(days=7)
                     self._select_first_in_week()
+                    self.desc_scroll = 0
                 elif key == 'pgdn':
                     # Next week
                     self.current_week_monday += timedelta(days=7)
                     self._select_first_in_week()
+                    self.desc_scroll = 0
                 elif key == 'w':
                     # Toggle weekends
                     self.show_weekends = not self.show_weekends
@@ -1092,14 +1127,29 @@ class TerminalCalendarViewer:
                     today = date.today()
                     self.current_week_monday = today - timedelta(days=today.weekday())
                     self._select_first_in_week()
+                    self.desc_scroll = 0
                 elif key == 'home' or key == 'g':
                     self.selected = 0
+                    self.desc_scroll = 0
                 elif key == 'end' or key == 'G':
                     self.selected = len(self.flat_list) - 1
+                    self.desc_scroll = 0
                 elif key in ('enter', 'o'):
                     self._open_meeting()
                 elif key in ('y', 'n', 'm'):
                     self._update_rsvp(key)
+                elif key in ('<', ','):
+                    # Scroll description up
+                    self.desc_scroll = max(0, self.desc_scroll - 2)
+                elif key in ('>', '.'):
+                    # Scroll description down
+                    m = self._get_selected_meeting()
+                    if m:
+                        desc = m.get("description", "")
+                        if desc:
+                            desc_lines = [l for l in strip_html(desc).split("\n") if l.strip()]
+                            max_scroll = max(0, len(desc_lines) - self.desc_max_lines)
+                            self.desc_scroll = min(max_scroll, self.desc_scroll + 2)
         except (KeyboardInterrupt, EOFError):
             pass
         finally:

@@ -26,13 +26,24 @@ console = Console()
 app = typer.Typer(no_args_is_help=True)
 
 
+def _extract_meet_link(conference_data: dict | None) -> str:
+    """Extract Google Meet/video link from conferenceData."""
+    if not conference_data:
+        return ""
+    for entry in conference_data.get("entryPoints", []):
+        if entry.get("entryPointType") == "video":
+            return entry.get("uri", "")
+    return ""
+
+
 @app.command()
 def meetings(
     days: int = typer.Option(30, "--days", "-n", help="Days to look back"),
-    calendar_id: str = typer.Option("primary", "--calendar-id", "-c", help="Calendar ID"),
+    calendar_id: str = typer.Option("primary", "--calendar-id", "-c", help="Calendar ID (deprecated, use --calendars)"),
+    calendars: Optional[str] = typer.Option(None, "--calendars", "-C", help="Comma-separated calendar IDs (default: from config or 'primary')"),
     work_only: bool = typer.Option(False, "--work-only", "-w", help="Filter to work meetings only"),
     include_declined: bool = typer.Option(False, "--include-declined", help="Include declined meetings"),
-    max_results: int = typer.Option(500, "--max-results", "-m", help="Maximum results"),
+    max_results: int = typer.Option(500, "--max-results", "-m", help="Maximum results per calendar"),
     output_format: str = typer.Option("markdown", "--format", "-f", help="Output format: json, csv, markdown"),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Launch interactive viewer"),
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Use named profile"),
@@ -48,13 +59,41 @@ def meetings(
         work_only = prof.filters.get("calendar", {}).get("work_only", work_only)
         exclude_keywords = prof.filters.get("calendar", {}).get("exclude_keywords", [])
 
+    # Determine which calendars to fetch
+    # Priority: --calendars flag > config > --calendar-id (deprecated) > "primary"
+    if calendars:
+        calendar_ids = [c.strip() for c in calendars.split(",")]
+    elif hasattr(config, 'calendar') and config.calendar.calendars:
+        calendar_ids = config.calendar.calendars
+    elif calendar_id != "primary":
+        calendar_ids = [calendar_id]  # Use deprecated flag if explicitly set
+    else:
+        calendar_ids = ["primary"]
+
     print_header("gwark calendar meetings")
-    print_info(f"Days back: {days}, Calendar: {calendar_id}, Work only: {work_only}")
+    cal_display = ", ".join(calendar_ids) if len(calendar_ids) <= 3 else f"{len(calendar_ids)} calendars"
+    print_info(f"Days back: {days}, Calendars: {cal_display}, Work only: {work_only}")
 
     try:
         from gmail_mcp.auth import get_calendar_service
 
         service = get_calendar_service()
+
+        # Fetch calendar metadata (names, colors) for all accessible calendars
+        print_info("Fetching calendar metadata...")
+        calendar_list = service.calendarList().list(
+            fields="items(id,summary,backgroundColor,foregroundColor,primary)"
+        ).execute()
+
+        # Build color map: {calendar_id: {"name": "Personal", "bg": "#9fe1e7", ...}}
+        calendar_meta = {}
+        for cal in calendar_list.get("items", []):
+            calendar_meta[cal["id"]] = {
+                "name": cal.get("summary", cal["id"]),
+                "bg": cal.get("backgroundColor", "#4285f4"),
+                "fg": cal.get("foregroundColor", "#ffffff"),
+                "primary": cal.get("primary", False),
+            }
 
         # Calculate time range
         # For interactive mode, load extra buffer (month before and after)
@@ -70,22 +109,33 @@ def meetings(
 
         print_info(f"Fetching events from {time_min[:10]} to {time_max[:10]}...")
 
-        # Fetch events
-        events_result = service.events().list(
-            calendarId=calendar_id,
-            timeMin=time_min,
-            timeMax=time_max,
-            maxResults=max_results,
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
+        # Fetch events from each calendar
+        all_events = []
+        for cal_id in calendar_ids:
+            try:
+                events_result = service.events().list(
+                    calendarId=cal_id,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=max_results,
+                    singleEvents=True,
+                    orderBy="startTime",
+                    conferenceDataVersion=1,  # Include Meet links
+                ).execute()
 
-        events = events_result.get("items", [])
-        print_info(f"Found {len(events)} events")
+                # Tag each event with its source calendar
+                for event in events_result.get("items", []):
+                    event["_calendar_id"] = cal_id
+                all_events.extend(events_result.get("items", []))
+                print_info(f"  {calendar_meta.get(cal_id, {}).get('name', cal_id)}: {len(events_result.get('items', []))} events")
+            except Exception as e:
+                print_error(f"  Failed to fetch {cal_id}: {e}")
+
+        print_info(f"Found {len(all_events)} total events")
 
         # Process events
         meetings_data = []
-        for event in events:
+        for event in all_events:
             # Skip declined if not included
             if not include_declined:
                 attendees = event.get("attendees", [])
@@ -99,6 +149,8 @@ def meetings(
             # Extract meeting details
             start = event.get("start", {})
             end = event.get("end", {})
+            cal_id = event.get("_calendar_id", "primary")
+            cal_info = calendar_meta.get(cal_id, {"name": "Primary", "bg": "#4285f4", "fg": "#ffffff"})
 
             meeting = {
                 "id": event.get("id"),
@@ -106,11 +158,26 @@ def meetings(
                 "start": start.get("dateTime", start.get("date", "")),
                 "end": end.get("dateTime", end.get("date", "")),
                 "location": event.get("location", ""),
-                "description": event.get("description", "")[:200] if event.get("description") else "",
+                # Full description (not truncated)
+                "description": event.get("description", ""),
                 "organizer": event.get("organizer", {}).get("email", ""),
-                "attendees": [a.get("email") for a in event.get("attendees", [])],
+                # Attendees with displayName
+                "attendees": [
+                    {
+                        "email": a.get("email", ""),
+                        "name": a.get("displayName") or a.get("email", "").split("@")[0].replace(".", " ").title(),
+                        "status": a.get("responseStatus", "needsAction"),
+                    }
+                    for a in event.get("attendees", [])
+                ],
                 "status": event.get("status"),
                 "link": event.get("htmlLink", ""),
+                # Calendar source
+                "calendar_id": cal_id,
+                "calendar_name": cal_info.get("name", "Primary"),
+                "calendar_color": cal_info.get("bg", "#4285f4"),
+                # Google Meet link
+                "meet_link": _extract_meet_link(event.get("conferenceData")),
             }
 
             # Calculate duration
@@ -129,6 +196,9 @@ def meetings(
 
             meetings_data.append(meeting)
 
+        # Sort by start time (important when merging from multiple calendars)
+        meetings_data.sort(key=lambda m: m.get("start", ""))
+
         print_success(f"Processed {len(meetings_data)} meetings")
 
         # Format output
@@ -144,14 +214,21 @@ def meetings(
             content = _format_meetings_markdown(meetings_data)
             ext = "md"
 
-        prefix = f"calendar_meetings_{calendar_id}"
+        # Use calendar names in filename if multiple
+        if len(calendar_ids) > 1:
+            prefix = f"calendar_meetings_multi"
+        else:
+            cal_name = calendar_meta.get(calendar_ids[0], {}).get("name", calendar_ids[0])
+            prefix = f"calendar_meetings_{cal_name.replace(' ', '_')}"
         output_path = formatter.save(content, prefix, ext, output)
         print_success(f"Saved to: {output_path}")
 
         # Launch interactive viewer
         if interactive and meetings_data:
             from gwark.ui.viewer import view_meetings
-            view_meetings(meetings_data, title=f"Calendar: {calendar_id}")
+            # Pass calendar info to viewer
+            title = "Calendar" if len(calendar_ids) == 1 else f"Calendars ({len(calendar_ids)})"
+            view_meetings(meetings_data, title=title)
 
     except ImportError as e:
         print_error(f"Missing dependency: {e}")
