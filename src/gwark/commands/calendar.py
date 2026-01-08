@@ -1,10 +1,10 @@
 """Calendar commands for gwark CLI."""
 
-import asyncio
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable, TypeVar
 
 import typer
 from rich.console import Console
@@ -19,11 +19,48 @@ from gwark.core.output import (
     print_success,
     print_info,
     print_error,
+    print_warning,
     print_header,
 )
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
+
+T = TypeVar("T")
+
+
+def _retry_api_call(
+    func: Callable[[], T],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    operation: str = "API call",
+) -> T:
+    """Retry API call with exponential backoff for transient errors."""
+    from googleapiclient.errors import HttpError
+
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except HttpError as e:
+            last_error = e
+            status = e.resp.status if hasattr(e, 'resp') else 0
+
+            # Retry on 5xx (server errors) and 429 (rate limit)
+            if status in (429, 500, 502, 503, 504):
+                delay = base_delay * (2 ** attempt)
+                if attempt < max_retries - 1:
+                    print_warning(f"{operation} failed ({status}), retrying in {delay:.1f}s...")
+                    time.sleep(delay)
+                    continue
+            # Non-retryable error
+            raise
+        except Exception as e:
+            # Non-HTTP errors, don't retry
+            raise
+
+    # All retries exhausted
+    raise last_error
 
 
 def _extract_meet_link(conference_data: dict | None) -> str:
@@ -48,9 +85,12 @@ def list_calendars() -> None:
         service = get_calendar_service()
 
         print_info("Fetching calendars...")
-        calendar_list = service.calendarList().list(
-            fields="items(id,summary,backgroundColor,primary,accessRole)"
-        ).execute()
+        calendar_list = _retry_api_call(
+            lambda: service.calendarList().list(
+                fields="items(id,summary,backgroundColor,primary,accessRole)"
+            ).execute(),
+            operation="Fetch calendar list"
+        )
 
         calendars = calendar_list.get("items", [])
         print_success(f"Found {len(calendars)} calendars\n")
@@ -126,9 +166,12 @@ def meetings(
 
         # Fetch calendar metadata (names, colors) for all accessible calendars
         print_info("Fetching calendar metadata...")
-        calendar_list = service.calendarList().list(
-            fields="items(id,summary,backgroundColor,foregroundColor,primary)"
-        ).execute()
+        calendar_list = _retry_api_call(
+            lambda: service.calendarList().list(
+                fields="items(id,summary,backgroundColor,foregroundColor,primary)"
+            ).execute(),
+            operation="Fetch calendar list"
+        )
 
         # Build color map: {calendar_id: {"name": "Personal", "bg": "#9fe1e7", ...}}
         calendar_meta = {}
@@ -157,23 +200,27 @@ def meetings(
         # Fetch events from each calendar
         all_events = []
         for cal_id in calendar_ids:
+            cal_name = calendar_meta.get(cal_id, {}).get('name', cal_id)
             try:
-                events_result = service.events().list(
-                    calendarId=cal_id,
-                    timeMin=time_min,
-                    timeMax=time_max,
-                    maxResults=max_results,
-                    singleEvents=True,
-                    orderBy="startTime",
-                ).execute()
+                events_result = _retry_api_call(
+                    lambda cid=cal_id: service.events().list(
+                        calendarId=cid,
+                        timeMin=time_min,
+                        timeMax=time_max,
+                        maxResults=max_results,
+                        singleEvents=True,
+                        orderBy="startTime",
+                    ).execute(),
+                    operation=f"Fetch events from {cal_name}"
+                )
 
                 # Tag each event with its source calendar
                 for event in events_result.get("items", []):
                     event["_calendar_id"] = cal_id
                 all_events.extend(events_result.get("items", []))
-                print_info(f"  {calendar_meta.get(cal_id, {}).get('name', cal_id)}: {len(events_result.get('items', []))} events")
+                print_info(f"  {cal_name}: {len(events_result.get('items', []))} events")
             except Exception as e:
-                print_error(f"  Failed to fetch {cal_id}: {e}")
+                print_error(f"  Failed to fetch {cal_name}: {e}")
 
         print_info(f"Found {len(all_events)} total events")
 
