@@ -24,7 +24,6 @@ from gwark.core.output import (
     print_header,
 )
 from gwark.ui.progress import FetchProgress
-from gwark.ui.viewer import EmailViewer
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
@@ -43,10 +42,15 @@ def search(
     detail: str = typer.Option("summary", "--detail", help="Detail level: summary or full"),
     summarize: bool = typer.Option(False, "--summarize", help="Enable AI summarization"),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Launch interactive viewer"),
+    tui: bool = typer.Option(False, "--tui", help="Use Textual TUI instead of terminal viewer"),
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Use named profile"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
 ) -> None:
     """Search emails by domain, sender, subject, or custom query."""
+    # Force full detail when interactive mode (need body for viewing)
+    if interactive:
+        detail = "full"
+
     emails = asyncio.run(_search_async(
         domain=domain,
         sender=sender,
@@ -62,12 +66,10 @@ def search(
         output=output,
     ))
 
-    # Launch interactive viewer after async completes (must be in sync context)
+    # Launch interactive viewer after async completes
     if interactive and emails:
-        from gwark.core.output import print_info
-        print_info("Launching interactive viewer... (q to quit)")
-        viewer = EmailViewer(emails, title=f"Email Search: {domain or query or 'all'}")
-        viewer.run()
+        from gwark.ui.viewer import view_emails
+        view_emails(emails, title=f"Email Search: {domain or query or 'all'}", tui=tui)
 
 
 async def _search_async(
@@ -143,28 +145,37 @@ async def _search_async(
 
         print_success(f"Found {len(messages)} emails")
 
-        # Fetch email details using simple sync API (more reliable than batch)
+        # Fetch email details in parallel
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         from gmail_mcp.auth import get_gmail_service
         service = get_gmail_service()
 
         message_ids = [m["id"] for m in messages]
         api_format = "full" if detail == "full" else "metadata"
 
-        # Use animated progress bar for fetching
+        def fetch_one(msg_id: str) -> dict | None:
+            """Fetch a single email."""
+            try:
+                email_data = service.users().messages().get(
+                    userId="me",
+                    id=msg_id,
+                    format=api_format,
+                ).execute()
+                return extract_email_details(email_data, detail_level=detail)
+            except Exception:
+                return None
+
+        # Parallel fetch with progress
         emails = []
+        max_workers = min(50, len(message_ids))  # Cap at 50 concurrent
         with FetchProgress(len(message_ids), "Fetching emails") as progress:
-            for msg_id in message_ids:
-                try:
-                    email_data = service.users().messages().get(
-                        userId="me",
-                        id=msg_id,
-                        format=api_format,
-                    ).execute()
-                    details = extract_email_details(email_data, detail_level=detail)
-                    emails.append(details)
-                except Exception as e:
-                    pass  # Skip failed fetches silently during progress
-                progress.advance()
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(fetch_one, mid): mid for mid in message_ids}
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        emails.append(result)
+                    progress.advance()
 
         if not emails:
             print_error("Failed to fetch any email details")

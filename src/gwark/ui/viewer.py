@@ -1,17 +1,337 @@
-"""Interactive results viewer using Textual."""
+"""Interactive results viewer using Textual or Rich."""
 
+import re
+import webbrowser
 from typing import Any
+
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
+
+# Textual imports (lazy loaded for --tui mode)
+def _get_textual_imports():
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Container
+    from textual.widgets import DataTable, Footer, Header, Static
+    from textual.screen import ModalScreen
+    return App, ComposeResult, Binding, Container, DataTable, Footer, Header, Static, ModalScreen
+
+
+def extract_name(email_str: str) -> str:
+    """Extract just the name from 'Name <email>' format."""
+    if not email_str:
+        return ""
+    # Try to extract name from "Name <email@domain.com>" format
+    match = re.match(r'^"?([^"<]+)"?\s*<', email_str)
+    if match:
+        return match.group(1).strip()
+    # Try email prefix if no name
+    match = re.match(r'^([^@<]+)@', email_str)
+    if match:
+        return match.group(1).strip()
+    # Just return first part
+    return email_str.split('<')[0].strip()[:20]
+
+
+def short_date(date_str: str) -> str:
+    """Extract short date like 'Jan 08' from various formats."""
+    if not date_str:
+        return ""
+    # Parse "Thu, 08 Jan 2026" or similar formats
+    import re
+    # Match day and month: "08 Jan" or "Jan 08"
+    match = re.search(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', date_str, re.I)
+    if match:
+        return f"{match.group(2)} {int(match.group(1)):02d}"
+    # Try reverse: "Jan 08"
+    match = re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})', date_str, re.I)
+    if match:
+        return f"{match.group(1)} {int(match.group(2)):02d}"
+    # Try numeric date
+    match = re.match(r'(\d{1,2})[/-](\d{1,2})', date_str)
+    if match:
+        return f"{match.group(1)}/{match.group(2)}"
+    # Already short enough
+    if len(date_str) <= 8:
+        return date_str
+    return date_str[:8]
+
+
+# =============================================================================
+# Rich Terminal Viewer (default - matches terminal theme)
+# =============================================================================
+
+def strip_html(html: str) -> str:
+    """Convert HTML to plain text, preserving links."""
+    import re
+    if not html or '<' not in html:
+        return html
+
+    # Extract links before stripping
+    links = []
+    for match in re.finditer(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>([^<]*)</a>', html, re.I):
+        url, text = match.groups()
+        if text.strip():
+            links.append(f"{text.strip()} ({url})")
+
+    # Remove script/style content
+    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.I)
+    # Replace br/p/div with newlines
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.I)
+    text = re.sub(r'</?(p|div|tr|li)[^>]*>', '\n', text, flags=re.I)
+    # Remove all other tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Decode entities
+    text = re.sub(r'&nbsp;', ' ', text)
+    text = re.sub(r'&amp;', '&', text)
+    text = re.sub(r'&lt;', '<', text)
+    text = re.sub(r'&gt;', '>', text)
+    text = re.sub(r'&#\d+;', '', text)
+    # Clean up whitespace
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r' {2,}', ' ', text)
+
+    # Append extracted links at end if any
+    if links:
+        text = text.strip() + "\n\n[Links]\n" + "\n".join(links[:10])
+
+    return text.strip()
+
+
+class TerminalEmailViewer:
+    """Interactive terminal viewer using Rich with arrow key navigation."""
+
+    def __init__(self, emails: list[dict[str, Any]], title: str = "Email Results") -> None:
+        self.emails = self._normalize_emails(emails)
+        self.title = title
+        self.console = Console()
+        self.selected = 0
+        self.page_size = 20  # Visible rows
+
+    def _normalize_emails(self, emails: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Normalize email data to standard format."""
+        results = []
+        for email in emails:
+            # Body can be in body_full, body, or body_preview
+            body = email.get("body_full") or email.get("body") or email.get("body_preview") or ""
+            results.append({
+                "date": email.get("date", email.get("formatted_date", "")),
+                "from": email.get("from", email.get("sender", "")),
+                "to": email.get("to", email.get("recipient", "")),
+                "subject": email.get("subject", ""),
+                "snippet": email.get("snippet", ""),
+                "body": body,
+                "link": email.get("link", email.get("gmail_link", "")),
+                "id": email.get("id", email.get("message_id", "")),
+            })
+        return results
+
+    def _build_table(self) -> Table:
+        """Build Rich table with windowed view around selection."""
+        # Calculate visible window
+        half_page = self.page_size // 2
+        start = max(0, self.selected - half_page)
+        end = min(len(self.emails), start + self.page_size)
+        # Adjust start if we're near the end
+        if end == len(self.emails):
+            start = max(0, end - self.page_size)
+
+        table = Table(
+            title=f"{self.title} ({self.selected + 1}/{len(self.emails)})",
+            show_lines=False, expand=True, box=None
+        )
+        table.add_column("", width=2)  # Selection indicator
+        table.add_column("Date", width=7)
+        table.add_column("From", width=16)
+        table.add_column("Subject", ratio=1)
+
+        for i in range(start, end):
+            email = self.emails[i]
+            marker = "▶" if i == self.selected else " "
+            style = "reverse" if i == self.selected else None
+            table.add_row(
+                marker,
+                short_date(email["date"]),
+                extract_name(email["from"])[:15],
+                email["subject"][:70] + ("..." if len(email["subject"]) > 70 else ""),
+                style=style,
+            )
+        return table
+
+    def _show_email(self) -> None:
+        """Display full email content."""
+        import shutil
+        email = self.emails[self.selected]
+
+        # Get terminal height for scrolling
+        term_height = shutil.get_terminal_size().lines - 10
+
+        # Get and clean body
+        body = email.get('body') or email.get('snippet') or '(No content)'
+        body = strip_html(body)
+
+        # Build content lines
+        lines = [
+            f"[dim]Email {self.selected + 1}/{len(self.emails)}[/]",
+            "",
+            f"[bold]From:[/] {email['from']}",
+            f"[bold]To:[/] {email['to']}",
+            f"[bold]Subject:[/] {email['subject']}",
+            f"[bold]Date:[/] {email['date']}",
+            "─" * 70,
+            "",
+        ]
+        lines.extend(body.split('\n'))
+        lines.append("")
+        lines.append("─" * 70)
+
+        # Simple scrolling view
+        scroll_pos = 0
+        while True:
+            self.console.clear()
+            # Show visible portion
+            visible = lines[scroll_pos:scroll_pos + term_height]
+            for line in visible:
+                self.console.print(line)
+
+            # Show scroll indicator
+            if len(lines) > term_height:
+                pct = int((scroll_pos / max(1, len(lines) - term_height)) * 100)
+                self.console.print(f"\n[dim]↑↓ scroll | q/Esc: back | ({pct}%)[/]")
+            else:
+                self.console.print(f"\n[dim]q/Esc: back[/]")
+
+            key = self._getch()
+            if key in ('q', 'esc', 'enter'):
+                break
+            elif key == 'up' or key == 'k':
+                scroll_pos = max(0, scroll_pos - 3)
+            elif key == 'down' or key == 'j':
+                scroll_pos = min(max(0, len(lines) - term_height), scroll_pos + 3)
+            elif key == 'g':
+                scroll_pos = 0
+            elif key == 'G':
+                scroll_pos = max(0, len(lines) - term_height)
+
+    def _open_email(self) -> None:
+        """Open current email in Gmail."""
+        email = self.emails[self.selected]
+        link = email.get("link")
+        if not link and email.get("id"):
+            link = f"https://mail.google.com/mail/u/0/#all/{email['id']}"
+        if link:
+            webbrowser.open(link)
+
+    def _getch(self) -> str:
+        """Get a single keypress."""
+        import sys
+        if sys.platform == 'win32':
+            import msvcrt
+            ch = msvcrt.getch()
+            if ch in (b'\x00', b'\xe0'):  # Arrow key prefix on Windows
+                ch2 = msvcrt.getch()
+                if ch2 == b'H': return 'up'
+                if ch2 == b'P': return 'down'
+                if ch2 == b'K': return 'left'
+                if ch2 == b'M': return 'right'
+            if ch == b'\r': return 'enter'
+            if ch == b'\x1b': return 'esc'
+            return ch.decode('utf-8', errors='ignore').lower()
+        else:
+            import tty, termios
+            fd = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':  # Escape sequence
+                    ch2 = sys.stdin.read(2)
+                    if ch2 == '[A': return 'up'
+                    if ch2 == '[B': return 'down'
+                    if ch2 == '[C': return 'right'
+                    if ch2 == '[D': return 'left'
+                    return 'esc'
+                if ch == '\r' or ch == '\n': return 'enter'
+                return ch.lower()
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def _render(self) -> None:
+        """Render the current view."""
+        self.console.clear()
+        self.console.print(self._build_table())
+        self.console.print()
+        self.console.print("[dim]↑↓ Navigate | Enter: View | o: Open in Gmail | q: Quit[/]")
+
+    def run(self) -> None:
+        """Run the interactive viewer with keyboard navigation."""
+        try:
+            while True:
+                self._render()
+                key = self._getch()
+
+                if key in ('q', 'esc'):
+                    break
+                elif key == 'up' or key == 'k':
+                    self.selected = max(0, self.selected - 1)
+                elif key == 'down' or key == 'j':
+                    self.selected = min(len(self.emails) - 1, self.selected + 1)
+                elif key == 'enter':
+                    self._show_email()
+                elif key == 'o':
+                    self._open_email()
+                elif key == 'g':  # Go to top
+                    self.selected = 0
+                elif key == 'G':  # Go to bottom (shift+g)
+                    self.selected = len(self.emails) - 1
+        except (KeyboardInterrupt, EOFError):
+            pass
+        finally:
+            # Clean exit - hard reset terminal on Windows
+            import os
+            import sys
+            if sys.platform == 'win32':
+                os.system('cls')
+            else:
+                os.system('clear')
+            print("Done.")
+
+
+# =============================================================================
+# Textual TUI Viewer (optional - use with --tui flag)
+# =============================================================================
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Vertical
+from textual.containers import Container
 from textual.widgets import DataTable, Footer, Header, Static
 from textual.screen import ModalScreen
-from rich.text import Text
 
 
 class EmailDetailScreen(ModalScreen):
     """Modal screen showing email details."""
+
+    CSS = """
+    EmailDetailScreen {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.7);
+    }
+
+    #detail-container {
+        width: 85%;
+        height: 85%;
+        background: #1a1a1a;
+        border: solid #444444;
+        padding: 1 2;
+    }
+
+    #email-detail {
+        height: 100%;
+        overflow-y: auto;
+    }
+    """
 
     BINDINGS = [
         Binding("escape", "dismiss", "Close"),
@@ -29,23 +349,23 @@ class EmailDetailScreen(ModalScreen):
     def _format_email(self) -> Text:
         """Format email for display."""
         text = Text()
-        text.append(f"From: ", style="bold cyan")
+        text.append("From: ", style="bold")
         text.append(f"{self.email.get('from', 'Unknown')}\n")
-        text.append(f"To: ", style="bold cyan")
+        text.append("To: ", style="bold")
         text.append(f"{self.email.get('to', 'Unknown')}\n")
-        text.append(f"Subject: ", style="bold cyan")
+        text.append("Subject: ", style="bold")
         text.append(f"{self.email.get('subject', 'No subject')}\n")
-        text.append(f"Date: ", style="bold cyan")
+        text.append("Date: ", style="bold")
         text.append(f"{self.email.get('date', 'Unknown')}\n")
-        text.append("\n")
+        text.append("\n" + "─" * 60 + "\n\n")
 
-        if self.email.get("snippet"):
-            text.append("Preview:\n", style="bold yellow")
-            text.append(self.email["snippet"])
-
+        # Show full body if available, otherwise snippet
         if self.email.get("body"):
-            text.append("\n\nBody:\n", style="bold yellow")
-            text.append(self.email["body"][:2000])
+            text.append(self.email["body"])
+        elif self.email.get("snippet"):
+            text.append(self.email["snippet"])
+        else:
+            text.append("(No content available)")
 
         return text
 
@@ -53,44 +373,62 @@ class EmailDetailScreen(ModalScreen):
 class ResultsViewer(App):
     """Interactive viewer for search results."""
 
+    ENABLE_COMMAND_PALETTE = False  # Hide ^p palette
+    ANSI_COLOR = True  # Use terminal's ANSI color palette
+
+    # Use terminal's native colors
     CSS = """
+    Screen {
+        background: $background;
+    }
+
+    Header {
+        background: $primary;
+        color: $text;
+        height: 1;
+    }
+
+    Footer {
+        background: $primary;
+    }
+
     #results-table {
         height: 100%;
     }
 
-    #detail-container {
-        align: center middle;
-        width: 80%;
-        height: 80%;
-        background: $surface;
-        border: thick $primary;
-        padding: 1 2;
+    DataTable {
+        background: $background;
     }
 
-    #email-detail {
-        height: 100%;
-        overflow-y: auto;
+    DataTable > .datatable--header {
+        background: $primary;
+        color: $text;
+        text-style: bold;
+    }
+
+    DataTable > .datatable--cursor {
+        background: $secondary;
+        color: $text;
     }
 
     #status-bar {
         dock: bottom;
         height: 1;
         background: $primary;
-        color: $text;
+        color: $text-muted;
         padding: 0 1;
     }
     """
 
     BINDINGS = [
-        Binding("q", "quit", "Quit"),
-        Binding("escape", "quit", "Quit"),
         Binding("enter", "view_detail", "View"),
+        Binding("o", "open_link", "Open in Gmail"),
+        Binding("q", "quit", "Quit"),
+        Binding("escape", "quit", "Quit", show=False),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("g", "scroll_top", "Top", show=False),
         Binding("G", "scroll_bottom", "Bottom", show=False),
-        Binding("/", "search", "Search"),
-        Binding("o", "open_link", "Open in Gmail"),
     ]
 
     def __init__(
@@ -107,7 +445,7 @@ class ResultsViewer(App):
     def compose(self) -> ComposeResult:
         yield Header()
         yield DataTable(id="results-table")
-        yield Static(f" {len(self.results)} results | Enter: view | o: open | q: quit", id="status-bar")
+        yield Static(f" {len(self.results)} results", id="status-bar")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -116,33 +454,42 @@ class ResultsViewer(App):
         table.cursor_type = "row"
         table.zebra_stripes = True
 
-        # Add columns
+        # Compact widths: date tight, from medium, subject gets the rest
+        column_widths = {"date": 7, "from": 16, "to": 16, "subject": 70}
         for col in self.columns:
-            table.add_column(col, key=col.lower())
-
-        # Add link column
-        table.add_column("", key="link", width=6)
+            width = column_widths.get(col.lower(), 20)
+            table.add_column(col, key=col.lower(), width=width)
 
         # Add rows
         for i, result in enumerate(self.results):
             row_data = []
             for col in self.columns:
-                value = result.get(col.lower(), "")
-                # Truncate long values
-                if isinstance(value, str) and len(value) > 50:
-                    value = value[:47] + "..."
-                row_data.append(value)
+                col_lower = col.lower()
+                value = result.get(col_lower, "")
 
-            # Add link indicator
-            if result.get("link") or result.get("id"):
-                row_data.append("[link]")
-            else:
-                row_data.append("")
+                # Format based on column type
+                if col_lower == "date":
+                    value = short_date(value)
+                elif col_lower in ("from", "to"):
+                    value = extract_name(value)[:15]  # Trim to fit
+                elif col_lower == "subject":
+                    # Subject gets most space
+                    if isinstance(value, str) and len(value) > 68:
+                        value = value[:65] + "..."
+                else:
+                    if isinstance(value, str) and len(value) > 18:
+                        value = value[:15] + "..."
+
+                row_data.append(value)
 
             table.add_row(*row_data, key=str(i))
 
         # Focus table
         table.focus()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle Enter key on table row."""
+        self.action_view_detail()
 
     def action_view_detail(self) -> None:
         """View selected email details."""
@@ -159,9 +506,12 @@ class ResultsViewer(App):
         if table.cursor_row is not None and table.cursor_row < len(self.results):
             email = self.results[table.cursor_row]
             link = email.get("link")
+            # Construct Gmail link from ID if not set
+            if not link and email.get("id"):
+                link = f"https://mail.google.com/mail/u/0/#all/{email['id']}"
             if link:
                 webbrowser.open(link)
-                self.notify(f"Opening in browser...")
+                self.notify("Opening in browser...")
             else:
                 self.notify("No link available", severity="warning")
 
@@ -185,6 +535,10 @@ class ResultsViewer(App):
         table = self.query_one(DataTable)
         table.move_cursor(row=len(self.results) - 1)
 
+    def action_quit(self) -> None:
+        """Quit the application cleanly."""
+        self.exit()
+
 
 class EmailViewer(ResultsViewer):
     """Specialized viewer for email results."""
@@ -207,13 +561,465 @@ class EmailViewer(ResultsViewer):
         super().__init__(results, title=title, columns=["Date", "From", "Subject"])
 
 
-def view_results(results: list[dict[str, Any]], title: str = "Results") -> None:
+class TerminalCalendarViewer:
+    """Elegant split-pane calendar viewer grouped by day."""
+
+    def __init__(self, meetings: list[dict[str, Any]], title: str = "Calendar") -> None:
+        self.title = title
+        self.console = Console()
+        self.meetings = sorted(meetings, key=lambda m: m.get("start", ""))
+        self.grouped = self._group_by_day()
+        self.flat_list = self._flatten()  # For navigation
+        self.selected = self._find_today_index()  # Start centered on today
+        self.page_size = 15
+
+    def _find_today_index(self) -> int:
+        """Find index of event closest to today."""
+        from datetime import datetime, date
+        today = date.today()
+
+        # First, try to find an event on today
+        for i, (day_key, _, m) in enumerate(self.flat_list):
+            try:
+                event_date = datetime.fromisoformat(m.get("start", "").replace("Z", "+00:00")).date()
+                if event_date == today:
+                    return i
+            except:
+                pass
+
+        # If no event today, find nearest event
+        closest_idx = 0
+        closest_diff = float('inf')
+        for i, (day_key, _, m) in enumerate(self.flat_list):
+            try:
+                event_date = datetime.fromisoformat(m.get("start", "").replace("Z", "+00:00")).date()
+                diff = abs((event_date - today).days)
+                if diff < closest_diff:
+                    closest_diff = diff
+                    closest_idx = i
+            except:
+                pass
+        return closest_idx
+
+    def _group_by_day(self) -> dict:
+        """Group meetings by day."""
+        from datetime import datetime
+        grouped = {}
+        for m in self.meetings:
+            start = m.get("start", "")
+            try:
+                dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                day_key = dt.strftime("%Y-%m-%d")
+                day_label = dt.strftime("%a, %b %d")
+            except:
+                day_key = "Unknown"
+                day_label = "Unknown Date"
+
+            if day_key not in grouped:
+                grouped[day_key] = {"label": day_label, "meetings": []}
+            grouped[day_key]["meetings"].append(m)
+        return grouped
+
+    def _flatten(self) -> list:
+        """Create flat list of (day_key, meeting_index) for navigation."""
+        flat = []
+        for day_key in sorted(self.grouped.keys()):
+            for i, m in enumerate(self.grouped[day_key]["meetings"]):
+                flat.append((day_key, i, m))
+        return flat
+
+    def _get_selected_meeting(self) -> dict:
+        """Get currently selected meeting."""
+        if 0 <= self.selected < len(self.flat_list):
+            return self.flat_list[self.selected][2]
+        return {}
+
+    def _format_time(self, iso_str: str) -> str:
+        """Format ISO time to HH:MM."""
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+            return dt.strftime("%H:%M")
+        except:
+            return iso_str[:5] if iso_str else "--:--"
+
+    def _format_duration(self, minutes: int) -> str:
+        """Format duration nicely, handling multi-day events."""
+        if minutes >= 1440:  # 24+ hours = multi-day event
+            days = minutes // 1440
+            if days >= 7:
+                weeks = days // 7
+                remaining_days = days % 7
+                if remaining_days:
+                    return f"{weeks}w {remaining_days}d"
+                return f"{weeks} week{'s' if weeks > 1 else ''}"
+            return f"{days} day{'s' if days > 1 else ''}"
+        if minutes < 60:
+            return f"{minutes}m"
+        h, m = divmod(minutes, 60)
+        return f"{h}h{m}m" if m else f"{h}h"
+
+    def _is_multi_day(self, meeting: dict) -> bool:
+        """Check if event spans multiple days."""
+        minutes = meeting.get("duration_minutes", 0)
+        return minutes >= 1440  # 24+ hours
+
+    def _format_date_range(self, start: str, end: str) -> str:
+        """Format a date range for multi-day events."""
+        from datetime import datetime
+        try:
+            start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            start_str = start_dt.strftime("%b %d")
+            end_str = end_dt.strftime("%b %d")
+            if start_dt.year != end_dt.year:
+                start_str = start_dt.strftime("%b %d %Y")
+                end_str = end_dt.strftime("%b %d %Y")
+            return f"{start_str} - {end_str}"
+        except:
+            return ""
+
+    def _build_left_pane(self) -> Panel:
+        """Build the events list pane grouped by day."""
+        from rich.text import Text
+
+        lines = Text()
+        current_idx = 0
+
+        # Calculate visible window
+        start_idx = max(0, self.selected - self.page_size // 2)
+        end_idx = min(len(self.flat_list), start_idx + self.page_size)
+        if end_idx == len(self.flat_list):
+            start_idx = max(0, end_idx - self.page_size)
+
+        visible_days = set()
+        for i in range(start_idx, end_idx):
+            visible_days.add(self.flat_list[i][0])
+
+        prev_day = None
+        for day_key in sorted(self.grouped.keys()):
+            if day_key not in visible_days:
+                current_idx += len(self.grouped[day_key]["meetings"])
+                continue
+
+            day_data = self.grouped[day_key]
+
+            # Compact day header
+            if prev_day is not None:
+                lines.append("\n")  # Spacing between days
+            lines.append(f" {day_data['label']}\n", style="bold cyan")
+            prev_day = day_key
+
+            for i, m in enumerate(day_data["meetings"]):
+                if current_idx < start_idx:
+                    current_idx += 1
+                    continue
+                if current_idx >= end_idx:
+                    break
+
+                is_selected = current_idx == self.selected
+                is_multi = self._is_multi_day(m)
+
+                # For multi-day events, show date range instead of time
+                if is_multi:
+                    time_str = self._format_date_range(m.get("start", ""), m.get("end", ""))[:11]
+                else:
+                    time_str = self._format_time(m.get("start", ""))
+
+                duration = self._format_duration(m.get("duration_minutes", 0))
+                summary = m.get("summary", "No Title")[:30]
+
+                marker = "▸" if is_selected else " "
+                style = "reverse bold" if is_selected else None
+
+                line = f" {marker} {time_str:>11}  {summary:<30} {duration:>8}\n"
+                lines.append(line, style=style)
+                current_idx += 1
+
+        return Panel(
+            lines,
+            title=f"[bold]{self.title}[/] ({self.selected + 1}/{len(self.flat_list)})",
+            border_style="blue",
+            padding=(0, 0),
+        )
+
+    def _build_right_pane(self) -> Panel:
+        """Build the detail pane for selected meeting."""
+        from rich.text import Text
+
+        m = self._get_selected_meeting()
+        if not m:
+            return Panel("No meeting selected", title="Details", border_style="dim")
+
+        content = Text()
+
+        # Title - prominent and readable
+        content.append(m.get("summary", "No Title") + "\n", style="bold bright_white")
+        content.append("─" * 40 + "\n\n", style="dim")
+
+        # Time / Date Range
+        is_multi = self._is_multi_day(m)
+        if is_multi:
+            date_range = self._format_date_range(m.get("start", ""), m.get("end", ""))
+            duration = self._format_duration(m.get("duration_minutes", 0))
+            content.append("Time:       ", style="dim")
+            content.append(f"{date_range} ({duration})\n\n")
+        else:
+            start_time = self._format_time(m.get("start", ""))
+            end_time = self._format_time(m.get("end", ""))
+            duration = self._format_duration(m.get("duration_minutes", 0))
+            content.append("Time:       ", style="dim")
+            content.append(f"{start_time} - {end_time} ({duration})\n\n")
+
+        # Location
+        location = m.get("location", "")
+        if location:
+            content.append("Location:   ", style="dim")
+            content.append(f"{location}\n\n")
+
+        # Organizer - with label
+        organizer = m.get("organizer", "")
+        if organizer:
+            content.append("Organiser:  ", style="dim")
+            # Show name if available, otherwise email prefix
+            org_name = organizer.split("@")[0] if "@" in organizer else organizer
+            content.append(f"{org_name}\n")
+            if "@" in organizer:
+                content.append("            ", style="dim")
+                content.append(f"{organizer}\n", style="dim")
+            content.append("\n")
+
+        # Attendees - two-line format with name and email
+        attendees = m.get("attendees", [])
+        if attendees:
+            content.append("Attendees:\n", style="dim")
+            for att in attendees[:6]:
+                # att could be email string or dict with displayName
+                if isinstance(att, dict):
+                    name = att.get("displayName", "")
+                    email = att.get("email", "")
+                    if not name and email:
+                        name = email.split("@")[0].replace(".", " ").title()
+                else:
+                    # It's just an email string
+                    email = att
+                    name = att.split("@")[0].replace(".", " ").title() if "@" in att else att
+
+                content.append(f"  • {name}\n", style="white")
+                if email:
+                    content.append(f"    {email}\n", style="dim")
+            if len(attendees) > 6:
+                content.append(f"  ... +{len(attendees) - 6} more\n", style="dim")
+            content.append("\n")
+
+        # Description
+        desc = m.get("description", "")
+        if desc:
+            content.append("Notes:\n", style="dim")
+            # Strip HTML and limit length
+            desc = strip_html(desc)[:400]
+            for line in desc.split("\n")[:8]:
+                content.append(f"  {line}\n")
+
+        return Panel(
+            content,
+            title="Details",
+            border_style="green",
+            padding=(0, 1),
+        )
+
+    def _render(self) -> None:
+        """Render split pane view using Layout for tight spacing."""
+        from rich.layout import Layout
+        from rich.table import Table
+
+        self.console.clear()
+
+        left = self._build_left_pane()
+        right = self._build_right_pane()
+
+        # Use Layout for tighter control
+        layout = Layout()
+        layout.split_row(
+            Layout(left, name="left", ratio=1),
+            Layout(right, name="right", ratio=1),
+        )
+
+        self.console.print(layout, height=self.console.height - 3)
+        self.console.print()
+        self.console.print("[dim]↑↓ Navigate | PgUp/PgDn: Week | Enter/o: Open | q: Quit[/]")
+
+    def _getch(self) -> str:
+        """Get a single keypress."""
+        import sys
+        if sys.platform == 'win32':
+            import msvcrt
+            ch = msvcrt.getch()
+            if ch in (b'\x00', b'\xe0'):
+                ch2 = msvcrt.getch()
+                if ch2 == b'H': return 'up'
+                if ch2 == b'P': return 'down'
+                if ch2 == b'I': return 'pgup'    # Page Up
+                if ch2 == b'Q': return 'pgdn'    # Page Down
+                if ch2 == b'G': return 'home'    # Home
+                if ch2 == b'O': return 'end'     # End
+            if ch == b'\r': return 'enter'
+            if ch == b'\x1b': return 'esc'
+            return ch.decode('utf-8', errors='ignore').lower()
+        else:
+            import tty, termios
+            fd = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':
+                    ch2 = sys.stdin.read(1)
+                    if ch2 == '[':
+                        ch3 = sys.stdin.read(1)
+                        if ch3 == 'A': return 'up'
+                        if ch3 == 'B': return 'down'
+                        if ch3 == '5':  # Page Up: ESC [ 5 ~
+                            sys.stdin.read(1)  # consume ~
+                            return 'pgup'
+                        if ch3 == '6':  # Page Down: ESC [ 6 ~
+                            sys.stdin.read(1)  # consume ~
+                            return 'pgdn'
+                        if ch3 == 'H': return 'home'
+                        if ch3 == 'F': return 'end'
+                    return 'esc'
+                if ch in ('\r', '\n'): return 'enter'
+                return ch.lower()
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def _open_meeting(self) -> None:
+        """Open meeting in browser."""
+        m = self._get_selected_meeting()
+        link = m.get("link", "")
+        if link:
+            webbrowser.open(link)
+
+    def run(self) -> None:
+        """Run the calendar viewer."""
+        if not self.flat_list:
+            self.console.print("[yellow]No meetings to display[/]")
+            return
+
+        try:
+            while True:
+                self._render()
+                key = self._getch()
+
+                if key in ('q', 'esc'):
+                    break
+                elif key == 'up' or key == 'k':
+                    self.selected = max(0, self.selected - 1)
+                elif key == 'down' or key == 'j':
+                    self.selected = min(len(self.flat_list) - 1, self.selected + 1)
+                elif key == 'pgup':
+                    # Jump back ~7 days worth of events (or page_size)
+                    self.selected = max(0, self.selected - 7)
+                elif key == 'pgdn':
+                    # Jump forward ~7 days worth of events
+                    self.selected = min(len(self.flat_list) - 1, self.selected + 7)
+                elif key == 'home' or key == 'g':
+                    self.selected = 0
+                elif key == 'end' or key == 'G':
+                    self.selected = len(self.flat_list) - 1
+                elif key in ('enter', 'o'):
+                    self._open_meeting()
+        except (KeyboardInterrupt, EOFError):
+            pass
+        finally:
+            import os, sys
+            if sys.platform == 'win32':
+                os.system('cls')
+            else:
+                os.system('clear')
+            print("Done.")
+
+
+# Keep old class as alias for compatibility
+class TerminalMeetingViewer(TerminalCalendarViewer):
+    """Alias for backward compatibility."""
+    pass
+
+
+class TerminalDriveViewer(TerminalEmailViewer):
+    """Interactive viewer for drive files."""
+
+    def _normalize_emails(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Normalize file data."""
+        results = []
+        for f in items:
+            # Parse modified time
+            mod_time = f.get("modifiedTime", "")
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(mod_time.replace("Z", "+00:00"))
+                date_str = dt.strftime("%m/%d %H:%M")
+            except:
+                date_str = mod_time[:16] if mod_time else ""
+
+            results.append({
+                "date": date_str,
+                "from": f.get("owner", "Unknown").split("@")[0][:15],
+                "to": f.get("type", f.get("mimeType", "File"))[:20],
+                "subject": f.get("name", "Untitled"),
+                "body": f"Type: {f.get('type', f.get('mimeType', 'Unknown'))}\n"
+                       f"Owner: {f.get('owner', 'Unknown')}\n"
+                       f"Modified: {mod_time}\n"
+                       f"Link: {f.get('link', 'N/A')}\n",
+                "link": f.get("link", ""),
+                "id": f.get("id", ""),
+            })
+        return results
+
+
+def view_meetings(meetings: list[dict[str, Any]], title: str = "Calendar Meetings", tui: bool = False) -> None:
+    """Launch the interactive meeting viewer."""
+    if tui:
+        # Use Textual (not implemented for meetings yet)
+        viewer = TerminalMeetingViewer(meetings, title=title)
+        viewer.run()
+    else:
+        viewer = TerminalMeetingViewer(meetings, title=title)
+        viewer.run()
+
+
+def view_files(files: list[dict[str, Any]], title: str = "Drive Files", tui: bool = False) -> None:
+    """Launch the interactive file viewer."""
+    if tui:
+        viewer = TerminalDriveViewer(files, title=title)
+        viewer.run()
+    else:
+        viewer = TerminalDriveViewer(files, title=title)
+        viewer.run()
+
+
+def view_results(results: list[dict[str, Any]], title: str = "Results", tui: bool = False) -> None:
     """Launch the interactive results viewer."""
-    app = ResultsViewer(results, title=title)
-    app.run()
+    if tui:
+        app = ResultsViewer(results, title=title)
+        app.run()
+    else:
+        # Rich terminal viewer not implemented for generic results
+        app = ResultsViewer(results, title=title)
+        app.run()
 
 
-def view_emails(emails: list[dict[str, Any]], title: str = "Email Results") -> None:
-    """Launch the interactive email viewer."""
-    app = EmailViewer(emails, title=title)
-    app.run()
+def view_emails(emails: list[dict[str, Any]], title: str = "Email Results", tui: bool = False) -> None:
+    """Launch the interactive email viewer.
+
+    Args:
+        emails: List of email dictionaries
+        title: Window/table title
+        tui: If True, use Textual TUI. If False (default), use Rich terminal viewer.
+    """
+    if tui:
+        app = EmailViewer(emails, title=title)
+        app.run()
+    else:
+        viewer = TerminalEmailViewer(emails, title=title)
+        viewer.run()
