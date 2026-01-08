@@ -36,6 +36,54 @@ def _extract_meet_link(conference_data: dict | None) -> str:
     return ""
 
 
+@app.command("list")
+def list_calendars() -> None:
+    """List all available calendars with their IDs."""
+    from rich.table import Table
+
+    print_header("gwark calendar list")
+
+    try:
+        from gmail_mcp.auth import get_calendar_service
+        service = get_calendar_service()
+
+        print_info("Fetching calendars...")
+        calendar_list = service.calendarList().list(
+            fields="items(id,summary,backgroundColor,primary,accessRole)"
+        ).execute()
+
+        calendars = calendar_list.get("items", [])
+        print_success(f"Found {len(calendars)} calendars\n")
+
+        table = Table(title="Available Calendars", show_lines=False)
+        table.add_column("", width=2)  # Color dot
+        table.add_column("Name", style="bold")
+        table.add_column("ID (use with -C flag)")
+        table.add_column("Access")
+
+        for cal in calendars:
+            color = cal.get("backgroundColor", "#4285f4")
+            name = cal.get("summary", "Unnamed")
+            cal_id = cal.get("id", "")
+            access = cal.get("accessRole", "reader")
+            primary = " (primary)" if cal.get("primary") else ""
+
+            table.add_row(
+                f"[{color}]●[/]",
+                f"{name}{primary}",
+                cal_id if len(cal_id) < 50 else cal_id[:47] + "...",
+                access,
+            )
+
+        console.print(table)
+        console.print("\n[dim]Use: gwark calendar meetings -C \"primary,<calendar-id>\" -i[/]")
+        console.print("[dim]Or add to .gwark/config.yaml under calendar.calendars[/]")
+
+    except Exception as e:
+        print_error(f"Failed: {e}")
+        raise typer.Exit(1)
+
+
 @app.command()
 def meetings(
     days: int = typer.Option(30, "--days", "-n", help="Days to look back"),
