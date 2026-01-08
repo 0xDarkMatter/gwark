@@ -47,7 +47,7 @@ def search(
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
 ) -> None:
     """Search emails by domain, sender, subject, or custom query."""
-    asyncio.run(_search_async(
+    emails = asyncio.run(_search_async(
         domain=domain,
         sender=sender,
         recipient=recipient,
@@ -58,10 +58,16 @@ def search(
         output_format=output_format,
         detail=detail,
         summarize=summarize,
-        interactive=interactive,
         profile=profile,
         output=output,
     ))
+
+    # Launch interactive viewer after async completes (must be in sync context)
+    if interactive and emails:
+        from gwark.core.output import print_info
+        print_info("Launching interactive viewer... (q to quit)")
+        viewer = EmailViewer(emails, title=f"Email Search: {domain or query or 'all'}")
+        viewer.run()
 
 
 async def _search_async(
@@ -75,10 +81,9 @@ async def _search_async(
     output_format: str,
     detail: str,
     summarize: bool,
-    interactive: bool,
     profile: Optional[str],
     output: Optional[Path],
-) -> None:
+) -> list | None:
     """Async implementation of email search."""
     # Load config
     config = load_config()
@@ -203,11 +208,7 @@ async def _search_async(
         output_path = formatter.save(content, prefix, ext, output)
         print_success(f"Saved to: {output_path}")
 
-        # Launch interactive viewer if requested
-        if interactive:
-            print_info("Launching interactive viewer... (q to quit)")
-            viewer = EmailViewer(emails, title=f"Email Search: {domain or query or 'all'}")
-            viewer.run()
+        return emails
 
     except ImportError as e:
         print_error(f"Missing dependency: {e}")
