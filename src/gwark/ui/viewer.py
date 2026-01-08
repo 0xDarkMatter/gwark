@@ -764,9 +764,9 @@ class TerminalCalendarViewer:
             is_weekend = day_offset >= 5  # Sat=5, Sun=6
             is_today = day_date == date.today()
 
-            # Day styling
+            # Day styling - today gets reverse highlight
             if is_today:
-                day_style = "bold yellow"
+                day_style = "bold reverse yellow"
             elif is_weekend:
                 day_style = "dim"
             else:
