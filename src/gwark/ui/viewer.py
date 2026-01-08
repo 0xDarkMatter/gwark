@@ -932,8 +932,7 @@ class TerminalCalendarViewer:
         meet_link = m.get("meet_link", "")
         if meet_link:
             content.append("  Meet:     ", style="dim")
-            content.append("🔗")
-            content.append(f"{meet_link}\n\n", style="cyan underline")
+            content.append(f"🔗{meet_link}\n\n", style="cyan underline")
 
         # Organizer
         organizer = m.get("organizer", "")
