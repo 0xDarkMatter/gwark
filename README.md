@@ -7,7 +7,11 @@
 
 **Your inbox, calendar, and drive — tamed from the terminal.**
 
-gwark is a command-line power tool for Google Workspace. Search thousands of emails in seconds, get AI-powered summaries of what actually matters, and finally answer "what did I even do last month?" without clicking through endless UI.
+Ever tried to find that one email from six months ago? The one with the attachment? From someone whose name you *almost* remember? Yeah, Gmail search isn't it.
+
+gwark is the command-line power tool Google Workspace desperately needed. Search thousands of emails in seconds with actual query syntax, not whatever algorithm Google thinks you meant. Get AI-powered summaries that cut through corporate reply-all chains. Browse your calendar without opening seventeen Chrome tabs. Export everything to formats that actually work with other tools.
+
+Built for devs, PMs, and anyone else who's sick of clicking through UI to answer "what did I even work on last quarter?" Your terminal is faster than your browser — let's use it.
 
 ## Why gwark?
 
