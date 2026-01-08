@@ -777,10 +777,9 @@ class TerminalCalendarViewer:
             day_data = self.grouped.get(day_key, {"label": day_label, "meetings": [], "location": None})
             location = day_data.get("location")
             location_str = f" ({location})" if location else ""
-            today_marker = " ★" if is_today else ""
 
             # Day header with location
-            lines.append(f"\n {day_label}{location_str}{today_marker}\n", style=day_style)
+            lines.append(f"\n {day_label}{location_str}\n", style=day_style)
 
             # Events for this day
             meetings = day_data.get("meetings", [])
