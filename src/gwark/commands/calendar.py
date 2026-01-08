@@ -120,7 +120,6 @@ def meetings(
                     maxResults=max_results,
                     singleEvents=True,
                     orderBy="startTime",
-                    conferenceDataVersion=1,  # Include Meet links
                 ).execute()
 
                 # Tag each event with its source calendar
