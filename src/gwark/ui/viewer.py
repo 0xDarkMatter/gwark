@@ -594,8 +594,9 @@ class TerminalCalendarViewer:
 
         indices = []
         for i, (day_key, _, m) in enumerate(self.flat_list):
+            # Use day_key (YYYY-MM-DD) which is already computed
             try:
-                event_date = datetime.fromisoformat(m.get("start", "").replace("Z", "+00:00")).date()
+                event_date = datetime.strptime(day_key, "%Y-%m-%d").date()
                 if self.current_week_monday <= event_date <= week_end:
                     indices.append(i)
             except:
@@ -1038,16 +1039,18 @@ class TerminalCalendarViewer:
                     # Navigate within week only, flip if at boundary
                     week_events = self._get_week_events()
                     if week_events:
-                        try:
+                        if self.selected in week_events:
                             current_pos = week_events.index(self.selected)
                             if current_pos > 0:
+                                # Move to previous event in week
                                 self.selected = week_events[current_pos - 1]
                             else:
-                                # At first event, flip to previous week
+                                # At first event of week, flip to previous week
                                 self.current_week_monday -= timedelta(days=7)
                                 self._select_last_in_week()
-                        except ValueError:
-                            self._select_first_in_week()
+                        else:
+                            # Selection not in week (shouldn't happen), snap to last
+                            self.selected = week_events[-1]
                     else:
                         # No events in week, flip back
                         self.current_week_monday -= timedelta(days=7)
@@ -1056,16 +1059,18 @@ class TerminalCalendarViewer:
                     # Navigate within week only, flip if at boundary
                     week_events = self._get_week_events()
                     if week_events:
-                        try:
+                        if self.selected in week_events:
                             current_pos = week_events.index(self.selected)
                             if current_pos < len(week_events) - 1:
+                                # Move to next event in week
                                 self.selected = week_events[current_pos + 1]
                             else:
-                                # At last event, flip to next week
+                                # At last event of week, flip to next week
                                 self.current_week_monday += timedelta(days=7)
                                 self._select_first_in_week()
-                        except ValueError:
-                            self._select_first_in_week()
+                        else:
+                            # Selection not in week (shouldn't happen), snap to first
+                            self.selected = week_events[0]
                     else:
                         # No events in week, flip forward
                         self.current_week_monday += timedelta(days=7)
