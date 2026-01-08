@@ -562,47 +562,57 @@ class EmailViewer(ResultsViewer):
 
 
 class TerminalCalendarViewer:
-    """Elegant split-pane calendar viewer grouped by day."""
+    """Week-based calendar viewer with Monday at top."""
 
     def __init__(self, meetings: list[dict[str, Any]], title: str = "Calendar") -> None:
+        from datetime import date, timedelta
+
         self.title = title
         self.console = Console()
         self.meetings = sorted(meetings, key=lambda m: m.get("start", ""))
         self.grouped = self._group_by_day()
         self.flat_list = self._flatten()  # For navigation
-        self.selected = self._find_today_index()  # Start centered on today
-        self.page_size = 15
+        self.selected = 0
+        self.show_weekends = True
 
-    def _find_today_index(self) -> int:
-        """Find index of event closest to today."""
-        from datetime import datetime, date
+        # Week navigation - start on Monday of current week
         today = date.today()
+        self.current_week_monday = today - timedelta(days=today.weekday())  # Monday
 
-        # First, try to find an event on today
+        # Find first event in current week
+        self._select_first_in_week()
+
+    def _get_monday(self, d) -> 'date':
+        """Get Monday of the week containing date d."""
+        from datetime import timedelta
+        return d - timedelta(days=d.weekday())
+
+    def _select_first_in_week(self) -> None:
+        """Select first event in current week."""
+        from datetime import datetime, timedelta
+        week_end = self.current_week_monday + timedelta(days=6 if self.show_weekends else 4)
+
         for i, (day_key, _, m) in enumerate(self.flat_list):
             try:
                 event_date = datetime.fromisoformat(m.get("start", "").replace("Z", "+00:00")).date()
-                if event_date == today:
-                    return i
+                if self.current_week_monday <= event_date <= week_end:
+                    self.selected = i
+                    return
             except:
                 pass
+        # No events in week, keep current selection
 
-        # If no event today, find nearest event
-        closest_idx = 0
-        closest_diff = float('inf')
-        for i, (day_key, _, m) in enumerate(self.flat_list):
-            try:
-                event_date = datetime.fromisoformat(m.get("start", "").replace("Z", "+00:00")).date()
-                diff = abs((event_date - today).days)
-                if diff < closest_diff:
-                    closest_diff = diff
-                    closest_idx = i
-            except:
-                pass
-        return closest_idx
+    def _is_working_location(self, meeting: dict) -> bool:
+        """Check if event is a Working Location (Home/Office), not a real event."""
+        summary = (meeting.get("summary") or "").lower().strip()
+        # Google Calendar Working Location shows as all-day "Home" or "Office"
+        if summary in ("home", "office", "working from home", "wfh"):
+            if self._is_all_day(meeting):
+                return True
+        return False
 
     def _group_by_day(self) -> dict:
-        """Group meetings by day."""
+        """Group meetings by day, extracting working location."""
         from datetime import datetime
         grouped = {}
         for m in self.meetings:
@@ -616,8 +626,14 @@ class TerminalCalendarViewer:
                 day_label = "Unknown Date"
 
             if day_key not in grouped:
-                grouped[day_key] = {"label": day_label, "meetings": []}
-            grouped[day_key]["meetings"].append(m)
+                grouped[day_key] = {"label": day_label, "meetings": [], "location": None}
+
+            # Check if this is a working location indicator
+            if self._is_working_location(m):
+                grouped[day_key]["location"] = m.get("summary", "").strip()
+            else:
+                grouped[day_key]["meetings"].append(m)
+
         return grouped
 
     def _flatten(self) -> list:
@@ -706,73 +722,92 @@ class TerminalCalendarViewer:
             return ""
 
     def _build_left_pane(self) -> Panel:
-        """Build the events list pane grouped by day."""
+        """Build week view with Monday at top."""
         from rich.text import Text
+        from datetime import timedelta
 
         lines = Text()
+
+        # Week header
+        week_end = self.current_week_monday + timedelta(days=6)
+        week_label = f"{self.current_week_monday.strftime('%b %d')} - {week_end.strftime('%b %d')}"
+        lines.append(f" Week of {week_label}\n", style="bold")
+        lines.append("─" * 50 + "\n", style="dim")
+
+        # Days to show (Mon-Sun or Mon-Fri)
+        days_to_show = 7 if self.show_weekends else 5
         current_idx = 0
 
-        # Calculate visible window
-        start_idx = max(0, self.selected - self.page_size // 2)
-        end_idx = min(len(self.flat_list), start_idx + self.page_size)
-        if end_idx == len(self.flat_list):
-            start_idx = max(0, end_idx - self.page_size)
+        for day_offset in range(days_to_show):
+            day_date = self.current_week_monday + timedelta(days=day_offset)
+            day_key = day_date.strftime("%Y-%m-%d")
+            is_weekend = day_offset >= 5  # Sat=5, Sun=6
 
-        visible_days = set()
-        for i in range(start_idx, end_idx):
-            visible_days.add(self.flat_list[i][0])
+            # Day styling
+            day_style = "dim" if is_weekend else "bold cyan"
+            day_label = day_date.strftime("%a, %b %d")
 
-        prev_day = None
-        for day_key in sorted(self.grouped.keys()):
-            if day_key not in visible_days:
-                current_idx += len(self.grouped[day_key]["meetings"])
-                continue
+            # Get working location if any
+            day_data = self.grouped.get(day_key, {"label": day_label, "meetings": [], "location": None})
+            location = day_data.get("location")
+            location_str = f" ({location})" if location else ""
 
-            day_data = self.grouped[day_key]
+            # Day header with location
+            lines.append(f" {day_label}{location_str}\n", style=day_style)
 
-            # Compact day header
-            if prev_day is not None:
-                lines.append("\n")  # Spacing between days
-            lines.append(f" {day_data['label']}\n", style="bold cyan")
-            prev_day = day_key
+            # Events for this day
+            meetings = day_data.get("meetings", [])
+            if not meetings:
+                lines.append("   [dim]—[/]\n")
+            else:
+                for m in meetings:
+                    # Find this meeting's index in flat_list
+                    meeting_idx = None
+                    for i, (dk, _, mtg) in enumerate(self.flat_list):
+                        if dk == day_key and mtg.get("id") == m.get("id"):
+                            meeting_idx = i
+                            break
 
-            for i, m in enumerate(day_data["meetings"]):
-                if current_idx < start_idx:
-                    current_idx += 1
-                    continue
-                if current_idx >= end_idx:
-                    break
+                    is_selected = meeting_idx == self.selected
+                    is_all_day = self._is_all_day(m)
+                    is_multi = self._is_multi_day(m)
 
-                is_selected = current_idx == self.selected
-                is_all_day = self._is_all_day(m)
-                is_multi = self._is_multi_day(m)
+                    # Time display
+                    if is_all_day and not is_multi:
+                        time_str = "all day"
+                    elif is_multi:
+                        time_str = self._format_date_range(m.get("start", ""), m.get("end", ""), force_range=True)
+                    else:
+                        time_str = self._format_time(m.get("start", ""))
 
-                # Determine time display
-                if is_all_day and not is_multi:
-                    time_str = "all day"
-                elif is_multi:
-                    # Don't truncate date ranges
-                    time_str = self._format_date_range(m.get("start", ""), m.get("end", ""), force_range=True)
-                else:
-                    time_str = self._format_time(m.get("start", ""))
+                    duration = self._format_duration(m.get("duration_minutes", 0))
+                    summary = m.get("summary", "No Title")[:26]
 
-                duration = self._format_duration(m.get("duration_minutes", 0))
-                summary = m.get("summary", "No Title")[:28]
+                    marker = "▸" if is_selected else " "
+                    base_style = "dim" if is_weekend else None
+                    style = "reverse bold" if is_selected else base_style
 
-                marker = "▸" if is_selected else " "
-                style = "reverse bold" if is_selected else None
+                    line = f"  {marker} {time_str:>8}  {summary:<26} {duration:>5}\n"
+                    lines.append(line, style=style)
 
-                # Variable width for time column
-                line = f" {marker} {time_str:>15}  {summary:<28} {duration:>6}\n"
-                lines.append(line, style=style)
-                current_idx += 1
+        # Count for title
+        week_events = sum(1 for dk, _, _ in self.flat_list
+                        if self.current_week_monday <= self._parse_date(dk) <= week_end)
 
         return Panel(
             lines,
-            title=f"[bold]{self.title}[/] ({self.selected + 1}/{len(self.flat_list)})",
+            title=f"[bold]{self.title}[/] ({week_events} events)",
             border_style="blue",
             padding=(0, 0),
         )
+
+    def _parse_date(self, day_key: str):
+        """Parse YYYY-MM-DD to date."""
+        from datetime import datetime
+        try:
+            return datetime.strptime(day_key, "%Y-%m-%d").date()
+        except:
+            return self.current_week_monday
 
     def _build_right_pane(self) -> Panel:
         """Build the detail pane for selected meeting."""
@@ -888,7 +923,8 @@ class TerminalCalendarViewer:
         table.add_row(left, right)
 
         self.console.print(table)
-        self.console.print("[dim]↑↓ Nav | PgUp/Dn: Week | o: Open | [y]es [n]o [m]aybe | q: Quit[/]")
+        wknd = "hide" if self.show_weekends else "show"
+        self.console.print(f"[dim]↑↓ Nav | PgUp/Dn: ←→Week | [w]: {wknd} wknd | [t]: Today | o: Open | q: Quit[/]")
 
     def _getch(self) -> str:
         """Get a single keypress."""
@@ -957,6 +993,8 @@ class TerminalCalendarViewer:
 
     def run(self) -> None:
         """Run the calendar viewer."""
+        from datetime import timedelta
+
         if not self.flat_list:
             self.console.print("[yellow]No meetings to display[/]")
             return
@@ -979,11 +1017,22 @@ class TerminalCalendarViewer:
                 elif key == 'down' or key == 'j':
                     self.selected = min(len(self.flat_list) - 1, self.selected + 1)
                 elif key == 'pgup':
-                    # Jump back ~7 days worth of events
-                    self.selected = max(0, self.selected - 7)
+                    # Previous week
+                    self.current_week_monday -= timedelta(days=7)
+                    self._select_first_in_week()
                 elif key == 'pgdn':
-                    # Jump forward ~7 days worth of events
-                    self.selected = min(len(self.flat_list) - 1, self.selected + 7)
+                    # Next week
+                    self.current_week_monday += timedelta(days=7)
+                    self._select_first_in_week()
+                elif key == 'w':
+                    # Toggle weekends
+                    self.show_weekends = not self.show_weekends
+                elif key == 't':
+                    # Jump to today's week
+                    from datetime import date
+                    today = date.today()
+                    self.current_week_monday = today - timedelta(days=today.weekday())
+                    self._select_first_in_week()
                 elif key == 'home' or key == 'g':
                     self.selected = 0
                 elif key == 'end' or key == 'G':
