@@ -746,6 +746,10 @@ class TerminalCalendarViewer:
         from rich.text import Text
         from datetime import timedelta, date
 
+        # Calculate content width (half console minus borders/padding)
+        console_width = self.console.width or 120
+        content_width = (console_width // 2) - 6  # borders + padding + gap
+
         lines = Text()
 
         # Week header
@@ -807,16 +811,21 @@ class TerminalCalendarViewer:
                         time_str = self._format_time(m.get("start", ""))
 
                     duration = self._format_duration(m.get("duration_minutes", 0))
+
+                    # Dynamic summary width: content_width - fixed parts (24 chars)
+                    summary_width = max(20, content_width - 24)
                     raw_summary = (m.get("summary") or "No Title").strip()
-                    summary = raw_summary[:28] if len(raw_summary) <= 28 else raw_summary[:25] + "..."
+                    if len(raw_summary) <= summary_width:
+                        summary = raw_summary
+                    else:
+                        summary = raw_summary[:summary_width - 3] + "..."
 
                     marker = "▸" if is_selected else " "
                     base_style = "dim" if is_weekend else None
                     cal_color = m.get("calendar_color", "#4285f4")
 
-                    # Build full-width line with proper spacing
-                    # Format: " ▸ ● HH:MMpm  Event Name                  1h30m "
-                    line_content = f" {marker} ● {time_str:>8}  {summary:<28} {duration:>7} "
+                    # Build full-width line with dynamic summary
+                    line_content = f" {marker} ● {time_str:>8}  {summary:<{summary_width}} {duration:>7} "
 
                     if is_selected:
                         # Full reverse highlight for selected
@@ -825,7 +834,7 @@ class TerminalCalendarViewer:
                         # Color dot, rest normal/dim
                         lines.append(f" {marker} ", style=base_style)
                         lines.append("●", style=cal_color)
-                        lines.append(f" {time_str:>8}  {summary:<28} {duration:>7} \n", style=base_style)
+                        lines.append(f" {time_str:>8}  {summary:<{summary_width}} {duration:>7} \n", style=base_style)
 
         # Add trailing space for height
         lines.append("\n")
@@ -839,6 +848,7 @@ class TerminalCalendarViewer:
             title=f"[bold]{self.title}[/] ({week_events} events)",
             border_style="blue",
             padding=(1, 1),
+            expand=True,
         )
 
     def _parse_date(self, day_key: str):
