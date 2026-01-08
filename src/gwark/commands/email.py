@@ -23,6 +23,8 @@ from gwark.core.output import (
     print_error,
     print_header,
 )
+from gwark.ui.progress import FetchProgress
+from gwark.ui.viewer import EmailViewer
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
@@ -40,6 +42,7 @@ def search(
     output_format: str = typer.Option("markdown", "--format", "-f", help="Output format: json, csv, markdown, text"),
     detail: str = typer.Option("summary", "--detail", help="Detail level: summary or full"),
     summarize: bool = typer.Option(False, "--summarize", help="Enable AI summarization"),
+    interactive: bool = typer.Option(False, "--interactive", "-i", help="Launch interactive viewer"),
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Use named profile"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
 ) -> None:
@@ -55,6 +58,7 @@ def search(
         output_format=output_format,
         detail=detail,
         summarize=summarize,
+        interactive=interactive,
         profile=profile,
         output=output,
     ))
@@ -71,6 +75,7 @@ async def _search_async(
     output_format: str,
     detail: str,
     summarize: bool,
+    interactive: bool,
     profile: Optional[str],
     output: Optional[Path],
 ) -> None:
@@ -140,21 +145,21 @@ async def _search_async(
         message_ids = [m["id"] for m in messages]
         api_format = "full" if detail == "full" else "metadata"
 
-        print_info(f"Fetching {len(message_ids)} email details...")
+        # Use animated progress bar for fetching
         emails = []
-        for i, msg_id in enumerate(message_ids):
-            try:
-                email_data = service.users().messages().get(
-                    userId="me",
-                    id=msg_id,
-                    format=api_format,
-                ).execute()
-                details = extract_email_details(email_data, detail_level=detail)
-                emails.append(details)
-                if (i + 1) % 10 == 0:
-                    print_info(f"  Fetched {i + 1}/{len(message_ids)} emails")
-            except Exception as e:
-                print_error(f"  Failed to fetch {msg_id}: {e}")
+        with FetchProgress(len(message_ids), "Fetching emails") as progress:
+            for msg_id in message_ids:
+                try:
+                    email_data = service.users().messages().get(
+                        userId="me",
+                        id=msg_id,
+                        format=api_format,
+                    ).execute()
+                    details = extract_email_details(email_data, detail_level=detail)
+                    emails.append(details)
+                except Exception as e:
+                    pass  # Skip failed fetches silently during progress
+                progress.advance()
 
         if not emails:
             print_error("Failed to fetch any email details")
@@ -197,6 +202,12 @@ async def _search_async(
         prefix = f"email_search_{domain or 'all'}"
         output_path = formatter.save(content, prefix, ext, output)
         print_success(f"Saved to: {output_path}")
+
+        # Launch interactive viewer if requested
+        if interactive:
+            print_info("Launching interactive viewer... (q to quit)")
+            viewer = EmailViewer(emails, title=f"Email Search: {domain or query or 'all'}")
+            viewer.run()
 
     except ImportError as e:
         print_error(f"Missing dependency: {e}")
