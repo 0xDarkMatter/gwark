@@ -887,30 +887,30 @@ class TerminalCalendarViewer:
 
         if is_all_day and not is_multi:
             date_str = self._format_date_range(m.get("start", ""), m.get("end", ""))
-            content.append("🕐 When:    ", style="dim")
-            content.append(f"{date_str} (all day)\n\n")
+            content.append("  When:     ", style="dim")
+            content.append(f"🕐{date_str} (all day)\n\n")
         elif is_multi:
             date_range = self._format_date_range(m.get("start", ""), m.get("end", ""), force_range=True)
             duration = self._format_duration(m.get("duration_minutes", 0))
-            content.append("🕐 When:    ", style="dim")
-            content.append(f"{date_range} ({duration})\n\n")
+            content.append("  When:     ", style="dim")
+            content.append(f"🕐{date_range} ({duration})\n\n")
         else:
             start_time = self._format_time(m.get("start", ""))
             end_time = self._format_time(m.get("end", ""))
             duration = self._format_duration(m.get("duration_minutes", 0))
-            content.append("🕐 When:    ", style="dim")
-            content.append(f"{start_time} - {end_time} ({duration})\n\n")
+            content.append("  When:     ", style="dim")
+            content.append(f"🕐{start_time} - {end_time} ({duration})\n\n")
 
         # Location - ALWAYS show (even if empty), with proper indentation for wrapping
         location = m.get("location", "")
-        content.append("📍 Location:", style="dim")
+        content.append("  Location: ", style="dim")
         if location:
             # Wrap long locations with indentation
             loc_lines = []
             words = location.split()
             current_line = ""
             for word in words:
-                if len(current_line) + len(word) + 1 <= 40:
+                if len(current_line) + len(word) + 1 <= 38:
                     current_line = f"{current_line} {word}".strip()
                 else:
                     if current_line:
@@ -921,17 +921,18 @@ class TerminalCalendarViewer:
 
             for i, line in enumerate(loc_lines):
                 if i == 0:
-                    content.append(f" {line}\n")
+                    content.append(f"📍{line}\n")
                 else:
                     content.append(f"             {line}\n")  # 13 spaces to align
             content.append("\n")
         else:
-            content.append(" (none)\n\n")
+            content.append("(none)\n\n")
 
         # Google Meet link (if exists)
         meet_link = m.get("meet_link", "")
         if meet_link:
-            content.append("🔗 Meet:    ", style="dim")
+            content.append("  Meet:     ", style="dim")
+            content.append("🔗")
             content.append(f"{meet_link}\n\n", style="cyan underline")
 
         # Organizer
