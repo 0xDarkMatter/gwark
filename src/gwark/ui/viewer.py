@@ -885,10 +885,32 @@ class TerminalCalendarViewer:
             content.append("When:       ", style="dim")
             content.append(f"{start_time} - {end_time} ({duration})\n\n")
 
-        # Location - ALWAYS show (even if empty)
+        # Location - ALWAYS show (even if empty), with proper indentation for wrapping
         location = m.get("location", "")
         content.append("Location:   ", style="dim")
-        content.append(f"{location or '(none)'}\n\n")
+        if location:
+            # Wrap long locations with indentation
+            loc_lines = []
+            words = location.split()
+            current_line = ""
+            for word in words:
+                if len(current_line) + len(word) + 1 <= 40:
+                    current_line = f"{current_line} {word}".strip()
+                else:
+                    if current_line:
+                        loc_lines.append(current_line)
+                    current_line = word
+            if current_line:
+                loc_lines.append(current_line)
+
+            for i, line in enumerate(loc_lines):
+                if i == 0:
+                    content.append(f"{line}\n")
+                else:
+                    content.append(f"            {line}\n")  # 12 spaces to align
+            content.append("\n")
+        else:
+            content.append("(none)\n\n")
 
         # Google Meet link (if exists)
         meet_link = m.get("meet_link", "")
@@ -918,7 +940,7 @@ class TerminalCalendarViewer:
                     email = att
                     name = att.split("@")[0].replace(".", " ").title() if "@" in att else att
 
-                content.append(f"  • {name} ", style="white")
+                content.append(f"  • {name} ", style="bold")
                 content.append(f"({email})\n", style="dim")
             if len(attendees) > 8:
                 content.append(f"  ... +{len(attendees) - 8} more\n", style="dim")
