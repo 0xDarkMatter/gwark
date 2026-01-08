@@ -807,19 +807,25 @@ class TerminalCalendarViewer:
                         time_str = self._format_time(m.get("start", ""))
 
                     duration = self._format_duration(m.get("duration_minutes", 0))
-                    summary = m.get("summary", "No Title")[:24]
+                    raw_summary = (m.get("summary") or "No Title").strip()
+                    summary = raw_summary[:28] if len(raw_summary) <= 28 else raw_summary[:25] + "..."
 
                     marker = "▸" if is_selected else " "
                     base_style = "dim" if is_weekend else None
-                    style = "reverse bold" if is_selected else base_style
-
-                    # Calendar color dot
                     cal_color = m.get("calendar_color", "#4285f4")
 
-                    # Build line with color dot
-                    lines.append(f"   {marker} ", style=style)
-                    lines.append("●", style=cal_color)  # Colored dot
-                    lines.append(f" {time_str:>8}  {summary:<24} {duration:>5}\n", style=style)
+                    # Build full-width line with proper spacing
+                    # Format: " ▸ ● HH:MMpm  Event Name                  1h30m "
+                    line_content = f" {marker} ● {time_str:>8}  {summary:<28} {duration:>7} "
+
+                    if is_selected:
+                        # Full reverse highlight for selected
+                        lines.append(f"{line_content}\n", style="reverse bold")
+                    else:
+                        # Color dot, rest normal/dim
+                        lines.append(f" {marker} ", style=base_style)
+                        lines.append("●", style=cal_color)
+                        lines.append(f" {time_str:>8}  {summary:<28} {duration:>7} \n", style=base_style)
 
         # Add trailing space for height
         lines.append("\n")
