@@ -46,6 +46,7 @@ def activity(
     include_shared: bool = typer.Option(True, "--include-shared", help="Include shared drives"),
     owned_only: bool = typer.Option(False, "--owned-only", help="Only files you own"),
     output_format: str = typer.Option("markdown", "--format", "-f", help="Output format: json, markdown"),
+    interactive: bool = typer.Option(False, "--interactive", "-i", help="Launch interactive viewer"),
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Use named profile"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
 ) -> None:
@@ -143,6 +144,11 @@ def activity(
         prefix = f"drive_activity_{year}{month:02d}"
         output_path = formatter.save(content, prefix, ext, output)
         print_success(f"Saved to: {output_path}")
+
+        # Launch interactive viewer
+        if interactive and processed_files:
+            from gwark.ui.viewer import view_files
+            view_files(processed_files, title=f"Drive Activity: {year}-{month:02d}")
 
     except ImportError as e:
         print_error(f"Missing dependency: {e}")

@@ -34,7 +34,7 @@ class CredentialValidator:
         missing_scopes = self.required_scopes - cred_scopes
 
         if missing_scopes:
-            logger.warning(f"Credentials missing scopes: {missing_scopes}")
+            logger.debug(f"Credentials missing scopes: {missing_scopes}")
             return False, missing_scopes
 
         return True, None

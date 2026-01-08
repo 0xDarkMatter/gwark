@@ -34,6 +34,7 @@ def meetings(
     include_declined: bool = typer.Option(False, "--include-declined", help="Include declined meetings"),
     max_results: int = typer.Option(500, "--max-results", "-m", help="Maximum results"),
     output_format: str = typer.Option("markdown", "--format", "-f", help="Output format: json, csv, markdown"),
+    interactive: bool = typer.Option(False, "--interactive", "-i", help="Launch interactive viewer"),
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Use named profile"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
 ) -> None:
@@ -139,6 +140,11 @@ def meetings(
         prefix = f"calendar_meetings_{calendar_id}"
         output_path = formatter.save(content, prefix, ext, output)
         print_success(f"Saved to: {output_path}")
+
+        # Launch interactive viewer
+        if interactive and meetings_data:
+            from gwark.ui.viewer import view_meetings
+            view_meetings(meetings_data, title=f"Calendar: {calendar_id}")
 
     except ImportError as e:
         print_error(f"Missing dependency: {e}")

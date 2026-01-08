@@ -178,7 +178,7 @@ class OAuth2Manager:
 
         if not required_scopes.issubset(cred_scopes):
             missing_scopes = required_scopes - cred_scopes
-            logger.warning(f"Credentials missing scopes: {missing_scopes}")
+            logger.debug(f"Credentials missing scopes: {missing_scopes}")
             return False
 
         return True
