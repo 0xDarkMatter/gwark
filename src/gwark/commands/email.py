@@ -102,9 +102,6 @@ async def _search_async(
     print_info(f"Days back: {days}, Max results: {max_results}, Detail: {detail}")
 
     try:
-        # Import Gmail client
-        from gmail_mcp.gmail import GmailClient, GmailOperations
-
         # Build query
         after_date = date_to_gmail_query(datetime.now() - timedelta(days=days))
         gmail_query = build_gmail_query(
@@ -122,33 +119,43 @@ async def _search_async(
 
         print_info(f"Query: {gmail_query}")
 
-        # Initialize client
+        # Initialize Gmail service
         print_info("Connecting to Gmail API...")
-        client = GmailClient()
-        operations = GmailOperations(client)
+        from gmail_mcp.auth import get_gmail_service
+        service = get_gmail_service()
 
-        # Search for messages
+        # Search for messages with pagination
         print_info("Searching emails...")
-        search_results = await operations.search_emails(
-            query=gmail_query,
-            max_results=max_results,
-        )
-        messages = search_results.get("messages", [])
+        messages = []
+        page_token = None
+
+        while True:
+            results = service.users().messages().list(
+                userId="me",
+                q=gmail_query,
+                maxResults=min(500, max_results - len(messages)),
+                pageToken=page_token,
+            ).execute()
+
+            messages.extend(results.get("messages", []))
+            page_token = results.get("nextPageToken")
+
+            if not page_token or len(messages) >= max_results:
+                break
+
+            print_info(f"Fetched {len(messages)} message IDs, getting more...")
+
+        # Trim to max_results
+        messages = messages[:max_results]
 
         if not messages:
             print_info("No emails found matching criteria.")
             return
 
-        # Limit to max_results
-        if len(messages) > max_results:
-            messages = messages[:max_results]
-
         print_success(f"Found {len(messages)} emails")
 
         # Fetch email details in parallel
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        from gmail_mcp.auth import get_gmail_service
-        service = get_gmail_service()
 
         message_ids = [m["id"] for m in messages]
         api_format = "full" if detail == "full" else "metadata"
