@@ -16,13 +16,22 @@ The Gmail MCP server uses OAuth2 to authenticate with Gmail on behalf of the use
 6. Wait for the project to be created
 7. Select your new project from the dropdown
 
-## Step 2: Enable Gmail API
+## Step 2: Enable Required APIs
+
+### Gmail API
 
 1. In the Google Cloud Console, navigate to "APIs & Services" > "Library"
 2. Search for "Gmail API"
 3. Click on "Gmail API"
 4. Click "ENABLE"
-5. Wait for the API to be enabled
+
+### People API (for Triage Workflow)
+
+1. Search for "People API"
+2. Click on "People API"
+3. Click "ENABLE"
+
+This is required for sender quality signals in the triage workflow.
 
 ## Step 3: Configure OAuth Consent Screen
 
@@ -42,9 +51,15 @@ Click "SAVE AND CONTINUE"
 
 1. Click "ADD OR REMOVE SCOPES"
 2. Add the following scopes:
-   - `https://www.googleapis.com/auth/gmail.readonly` - View your email messages and settings
-   - `https://www.googleapis.com/auth/gmail.modify` - Read, compose, and send emails from your Gmail account
+
+   **Gmail API:**
+   - `https://www.googleapis.com/auth/gmail.readonly` - View email messages and settings
+   - `https://www.googleapis.com/auth/gmail.modify` - Read, compose, and send emails
    - `https://www.googleapis.com/auth/gmail.labels` - Manage labels on emails
+
+   **People API (for triage workflow):**
+   - `https://www.googleapis.com/auth/contacts.readonly` - View My Contacts
+   - `https://www.googleapis.com/auth/contacts.other.readonly` - View Other Contacts (auto-saved)
 
 3. Click "UPDATE"
 4. Click "SAVE AND CONTINUE"
@@ -166,21 +181,34 @@ If you need to revoke access:
 
 ## Scope Explanations
 
-### gmail.readonly
+### Gmail Scopes
+
+#### gmail.readonly
 - Read email messages and metadata
 - Search emails
 - List labels
 - Cannot modify, delete, or send emails
 
-### gmail.modify
+#### gmail.modify
 - All readonly permissions, plus:
 - Modify labels (mark read/unread, star, archive)
 - Move to trash
 - Cannot send new emails
 
-### gmail.labels
+#### gmail.labels
 - Manage labels (create, update, delete)
 - Assign labels to messages
+
+### People API Scopes
+
+#### contacts.readonly
+- Read contacts from "My Contacts"
+- Used to identify known senders in triage workflow
+
+#### contacts.other.readonly
+- Read contacts from "Other Contacts"
+- These are auto-saved contacts from email interactions
+- Used to identify prior senders in triage workflow
 
 ## Publishing Your App (Optional)
 

@@ -118,3 +118,19 @@ def get_gmail_service() -> Any:
     """
     scopes: List[str] = ['https://www.googleapis.com/auth/gmail.readonly']
     return get_google_service('gmail', 'v1', scopes, 'gmail_token.pickle')
+
+
+def get_people_service() -> Any:
+    """Get authenticated Google People API service.
+
+    Used for checking if senders are in Google Contacts.
+    Includes scope for both My Contacts and Other Contacts (auto-saved).
+
+    Returns:
+        Authenticated People API v1 service
+    """
+    scopes: List[str] = [
+        'https://www.googleapis.com/auth/contacts.readonly',        # My Contacts
+        'https://www.googleapis.com/auth/contacts.other.readonly',  # Other Contacts
+    ]
+    return get_google_service('people', 'v1', scopes, 'people_token.pickle')

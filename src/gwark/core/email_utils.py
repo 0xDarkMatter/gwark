@@ -2,9 +2,12 @@
 
 import base64
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from .dates import get_date_timestamp
+
+if TYPE_CHECKING:
+    from gwark.schemas.config import EmailFilters
 
 
 def extract_name(email_string: str) -> str:
@@ -125,6 +128,30 @@ def extract_attachments(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return attachments
 
 
+def get_gmail_category(labels: List[str]) -> str:
+    """Extract Gmail category from labels.
+
+    Args:
+        labels: List of Gmail label IDs
+
+    Returns:
+        Category name: "Primary", "Updates", "Promotions", "Social", "Forums"
+    """
+    category_map = {
+        "CATEGORY_UPDATES": "Updates",
+        "CATEGORY_PROMOTIONS": "Promotions",
+        "CATEGORY_SOCIAL": "Social",
+        "CATEGORY_FORUMS": "Forums",
+    }
+
+    for label in labels:
+        if label in category_map:
+            return category_map[label]
+
+    # Default to Primary if no category label
+    return "Primary"
+
+
 def extract_email_details(
     email_data: Dict[str, Any],
     detail_level: str = "full",
@@ -148,6 +175,10 @@ def extract_email_details(
     date_str = header_map.get("Date", "")
     date_timestamp = get_date_timestamp(date_str)
 
+    # Get labels and derive Gmail category
+    labels = email_data.get("labelIds", [])
+    gmail_category = get_gmail_category(labels)
+
     # Basic metadata available in all modes
     result = {
         "id": email_data["id"],
@@ -158,7 +189,8 @@ def extract_email_details(
         "date": date_str,
         "date_timestamp": date_timestamp,
         "snippet": email_data.get("snippet", ""),
-        "labels": email_data.get("labelIds", []),
+        "labels": labels,
+        "gmail_category": gmail_category,
         "size_estimate": email_data.get("sizeEstimate", 0),
     }
 
@@ -237,3 +269,215 @@ def build_gmail_query(
         parts.append("has:attachment")
 
     return " ".join(parts) if parts else ""
+
+
+def apply_email_filters(
+    emails: List[Dict[str, Any]],
+    filters: "EmailFilters",
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Apply profile filters to emails.
+
+    Args:
+        emails: List of email dictionaries from extract_email_details()
+        filters: EmailFilters configuration from profile
+
+    Returns:
+        Tuple of (kept_emails, filtered_emails)
+    """
+    kept = []
+    filtered = []
+
+    for email in emails:
+        reason = _get_filter_reason(email, filters)
+        if reason:
+            email["filter_reason"] = reason
+            filtered.append(email)
+        else:
+            kept.append(email)
+
+    return kept, filtered
+
+
+def _get_filter_reason(email: Dict[str, Any], filters: "EmailFilters") -> Optional[str]:
+    """Check if email matches any exclude rules.
+
+    Returns:
+        Reason string if email should be filtered, None if it should be kept
+    """
+    sender = email.get("from", "").lower()
+    sender_email = extract_email_address(sender).lower()
+    subject = email.get("subject", "").lower()
+    labels = email.get("labels", [])
+
+    # Check exclude_senders (prefix match)
+    for pattern in filters.exclude_senders:
+        if sender_email.startswith(pattern.lower()):
+            return f"sender:{pattern}"
+
+    # Check exclude_domains
+    for domain in filters.exclude_domains:
+        if f"@{domain.lower()}" in sender_email:
+            return f"domain:{domain}"
+
+    # Check exclude_subjects (substring match, case-insensitive)
+    for pattern in filters.exclude_subjects:
+        if pattern.lower() in subject:
+            return f"subject:{pattern}"
+
+    # Check exclude_labels
+    for label in filters.exclude_labels:
+        if label in labels:
+            return f"label:{label}"
+
+    return None
+
+
+def filter_emails_by_rules(
+    emails: List[Dict[str, Any]],
+    exclude_senders: Optional[List[str]] = None,
+    exclude_subjects: Optional[List[str]] = None,
+    exclude_labels: Optional[List[str]] = None,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Simple filter function without needing EmailFilters object.
+
+    Args:
+        emails: List of email dictionaries
+        exclude_senders: List of sender patterns to exclude
+        exclude_subjects: List of subject patterns to exclude
+        exclude_labels: List of Gmail labels to exclude
+
+    Returns:
+        Tuple of (kept_emails, filtered_emails)
+    """
+    from gwark.schemas.config import EmailFilters
+
+    filters = EmailFilters(
+        exclude_senders=exclude_senders or [],
+        exclude_subjects=exclude_subjects or [],
+        exclude_labels=exclude_labels or [],
+    )
+    return apply_email_filters(emails, filters)
+
+
+def detect_response_status(
+    emails: List[Dict[str, Any]],
+    service,
+    user_email: str,
+) -> List[Dict[str, Any]]:
+    """Check if user has replied to each email thread.
+
+    Args:
+        emails: List of email dictionaries with threadId
+        service: Gmail API service object
+        user_email: User's email address for sender matching
+
+    Returns:
+        Emails with added response_status field:
+        - "replied": User already responded in this thread
+        - "needs_response": External party sent last, user should respond
+        - "awaiting_reply": User sent last, waiting for external reply
+        - "no_response_needed": User is sender (sent email)
+    """
+    if not emails:
+        return emails
+
+    # Get unique thread IDs
+    thread_ids = list(set(e.get("threadId") for e in emails if e.get("threadId")))
+
+    # Batch fetch thread info
+    thread_info = _fetch_thread_info(service, thread_ids, user_email)
+
+    # Apply status to each email
+    user_email_lower = user_email.lower()
+    for email in emails:
+        thread_id = email.get("threadId")
+        sender_email = extract_email_address(email.get("from", "")).lower()
+
+        # If user sent this email, no response needed
+        if sender_email == user_email_lower or user_email_lower in sender_email:
+            email["response_status"] = "no_response_needed"
+            continue
+
+        if thread_id and thread_id in thread_info:
+            info = thread_info[thread_id]
+            email["response_status"] = info["status"]
+            email["thread_message_count"] = info["message_count"]
+            if info.get("user_last_replied"):
+                email["user_last_replied"] = info["user_last_replied"]
+        else:
+            # No thread info, assume needs response if from external
+            email["response_status"] = "needs_response"
+
+    return emails
+
+
+def _fetch_thread_info(
+    service,
+    thread_ids: List[str],
+    user_email: str,
+) -> Dict[str, Dict[str, Any]]:
+    """Fetch thread information to determine response status.
+
+    Returns:
+        Dict mapping threadId to status info
+    """
+    result = {}
+    user_email_lower = user_email.lower()
+
+    def fetch_thread(thread_id: str) -> Tuple[str, Dict[str, Any]]:
+        try:
+            thread = service.users().threads().get(
+                userId="me",
+                id=thread_id,
+                format="metadata",
+                metadataHeaders=["From", "Date"],
+            ).execute()
+
+            messages = thread.get("messages", [])
+            if not messages:
+                return thread_id, {"status": "needs_response", "message_count": 0}
+
+            # Find last message and check if user sent any
+            user_sent_any = False
+            user_last_sent_date = None
+            last_message_from_user = False
+
+            for msg in messages:
+                headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                sender = extract_email_address(headers.get("From", "")).lower()
+                date_str = headers.get("Date", "")
+
+                is_user = sender == user_email_lower or user_email_lower in sender
+                if is_user:
+                    user_sent_any = True
+                    user_last_sent_date = date_str
+
+            # Check last message
+            last_msg = messages[-1]
+            last_headers = {h["name"]: h["value"] for h in last_msg.get("payload", {}).get("headers", [])}
+            last_sender = extract_email_address(last_headers.get("From", "")).lower()
+            last_message_from_user = last_sender == user_email_lower or user_email_lower in last_sender
+
+            # Determine status
+            if last_message_from_user:
+                status = "awaiting_reply"
+            elif user_sent_any:
+                status = "replied"  # User replied but external sent again
+            else:
+                status = "needs_response"
+
+            return thread_id, {
+                "status": status,
+                "message_count": len(messages),
+                "user_last_replied": user_last_sent_date,
+            }
+
+        except Exception:
+            return thread_id, {"status": "needs_response", "message_count": 0}
+
+    # Sequential fetch for stability
+    for i, tid in enumerate(thread_ids):
+        thread_id, info = fetch_thread(tid)
+        result[thread_id] = info
+
+    return result
