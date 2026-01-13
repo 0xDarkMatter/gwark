@@ -14,6 +14,10 @@ class EmailFilters(BaseModel):
     exclude_senders: list[str] = Field(default_factory=list, description="Exclude these senders")
     exclude_subjects: list[str] = Field(default_factory=list, description="Exclude emails with these subject patterns")
     exclude_domains: list[str] = Field(default_factory=list, description="Exclude these domains")
+    exclude_labels: list[str] = Field(
+        default_factory=lambda: ["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_UPDATES", "CATEGORY_FORUMS"],
+        description="Exclude emails with these Gmail labels"
+    )
 
 
 class CalendarFilters(BaseModel):
