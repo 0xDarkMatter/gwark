@@ -196,6 +196,12 @@ class FetchProgress:
             self.progress.advance(self.task_id, amount)
             self.completed += amount
 
+    def update(self, completed: int) -> None:
+        """Set progress to absolute completed count."""
+        if self.task_id is not None:
+            self.progress.update(self.task_id, completed=completed)
+            self.completed = completed
+
     def update_description(self, description: str) -> None:
         """Update the description."""
         if self.task_id is not None:
