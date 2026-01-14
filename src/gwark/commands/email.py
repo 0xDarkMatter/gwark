@@ -192,9 +192,9 @@ async def _search_async(
                         return None
             return None
 
-        # Parallel fetch with progress (10 workers for stability)
+        # Parallel fetch with progress (20 workers optimal for Gmail API)
         emails = []
-        max_workers = min(10, len(message_ids))
+        max_workers = min(20, len(message_ids))
         with FetchProgress(len(message_ids), "Fetching emails") as progress:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(fetch_one, mid): mid for mid in message_ids}
