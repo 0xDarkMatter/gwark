@@ -156,18 +156,29 @@ async def _search_async(
 
         # Fetch email details in parallel
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
+        import time
 
         message_ids = [m["id"] for m in messages]
         api_format = "full" if detail == "full" else "metadata"
         failed_ids = []
 
+        # Thread-local storage for Gmail service (not thread-safe otherwise)
+        thread_local = threading.local()
+
+        def get_thread_service():
+            """Get thread-local Gmail service instance."""
+            if not hasattr(thread_local, "service"):
+                thread_local.service = get_gmail_service()
+            return thread_local.service
+
         def fetch_one(msg_id: str) -> dict | None:
             """Fetch a single email with retry."""
-            import time
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    email_data = service.users().messages().get(
+                    svc = get_thread_service()  # Thread-safe service
+                    email_data = svc.users().messages().get(
                         userId="me",
                         id=msg_id,
                         format=api_format,
@@ -181,9 +192,9 @@ async def _search_async(
                         return None
             return None
 
-        # Parallel fetch with progress (20 workers to avoid rate limits)
+        # Parallel fetch with progress (10 workers for stability)
         emails = []
-        max_workers = min(20, len(message_ids))
+        max_workers = min(10, len(message_ids))
         with FetchProgress(len(message_ids), "Fetching emails") as progress:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(fetch_one, mid): mid for mid in message_ids}
