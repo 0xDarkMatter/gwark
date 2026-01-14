@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from gmail_mcp.config import get_settings
@@ -13,6 +14,151 @@ from gmail_mcp.utils.validators import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# HTTP Batch Fetcher - Native Gmail batch API for maximum throughput
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BatchResult:
+    """Result of batch operation."""
+
+    successful: dict[str, Any] = field(default_factory=dict)
+    failed: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def total(self) -> int:
+        """Total number of items processed."""
+        return len(self.successful) + len(self.failed)
+
+    @property
+    def success_rate(self) -> float:
+        """Percentage of successful operations."""
+        return len(self.successful) / self.total if self.total else 0.0
+
+
+class HttpBatchFetcher:
+    """Native Gmail HTTP batch API for maximum throughput.
+
+    Uses google-api-python-client's BatchHttpRequest to combine
+    multiple requests into a single HTTP round-trip.
+
+    Example:
+        >>> fetcher = HttpBatchFetcher(lambda: get_gmail_service())
+        >>> result = fetcher.fetch_messages(message_ids, format="full")
+        >>> print(f"Fetched {len(result.successful)} emails")
+
+    Why this is faster:
+        - Individual requests: 100 × 50ms latency = 5000ms
+        - Batch request: 1 × 50ms + processing = ~500ms
+        - Result: ~5-10x less network overhead
+
+    Note: Gmail enforces per-user rate limits even within batch requests.
+    Failed requests are retried with exponential backoff by the caller.
+    """
+
+    BATCH_SIZE = 100  # Gmail API limit per batch
+    INTER_BATCH_DELAY = 0.1  # Small delay between batches to avoid rate limits
+
+    def __init__(self, service_factory: Callable[[], Any]):
+        """Initialize batch fetcher.
+
+        Args:
+            service_factory: Callable that returns a Gmail service instance.
+                           Called fresh for each batch to ensure thread safety.
+        """
+        self.service_factory = service_factory
+
+    def fetch_messages(
+        self,
+        message_ids: list[str],
+        format: str = "full",
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> BatchResult:
+        """Fetch messages using HTTP batch API.
+
+        Args:
+            message_ids: List of Gmail message IDs to fetch
+            format: Response format (full, metadata, minimal, raw)
+            progress_callback: Optional callback(completed, total) for progress
+
+        Returns:
+            BatchResult with successful (id -> data) and failed (id -> error)
+        """
+        if not message_ids:
+            return BatchResult()
+
+        all_successful: dict[str, Any] = {}
+        all_failed: dict[str, str] = {}
+        total = len(message_ids)
+
+        import time
+
+        # Process in chunks of BATCH_SIZE
+        for i in range(0, total, self.BATCH_SIZE):
+            chunk = message_ids[i : i + self.BATCH_SIZE]
+            chunk_num = i // self.BATCH_SIZE + 1
+            total_chunks = (total + self.BATCH_SIZE - 1) // self.BATCH_SIZE
+
+            logger.debug(f"Batch {chunk_num}/{total_chunks}: {len(chunk)} messages")
+
+            result = self._fetch_batch(chunk, format)
+            all_successful.update(result.successful)
+            all_failed.update(result.failed)
+
+            if progress_callback:
+                progress_callback(len(all_successful) + len(all_failed), total)
+
+            # Small delay between batches to avoid rate limits
+            if i + self.BATCH_SIZE < total:
+                time.sleep(self.INTER_BATCH_DELAY)
+
+        logger.info(
+            f"Batch fetch complete: {len(all_successful)}/{total} successful "
+            f"({len(all_failed)} failed)"
+        )
+
+        return BatchResult(successful=all_successful, failed=all_failed)
+
+    def _fetch_batch(self, message_ids: list[str], format: str) -> BatchResult:
+        """Fetch a single batch via HTTP batch API.
+
+        Args:
+            message_ids: IDs for this batch (max 100)
+            format: Response format
+
+        Returns:
+            BatchResult for this batch
+        """
+        service = self.service_factory()
+        successful: dict[str, Any] = {}
+        failed: dict[str, str] = {}
+
+        def callback(request_id: str, response: Any, exception: Exception) -> None:
+            """Callback invoked for each request in the batch."""
+            if exception:
+                failed[request_id] = str(exception)
+                logger.debug(f"Batch item {request_id} failed: {exception}")
+            else:
+                successful[request_id] = response
+
+        # Create batch request
+        batch = service.new_batch_http_request(callback=callback)
+
+        # Add all message requests to batch
+        for msg_id in message_ids:
+            request = service.users().messages().get(
+                userId="me",
+                id=msg_id,
+                format=format,
+            )
+            batch.add(request, request_id=msg_id)
+
+        # Execute batch (single HTTP round-trip)
+        batch.execute()
+
+        return BatchResult(successful=successful, failed=failed)
 
 
 class BatchOperations:

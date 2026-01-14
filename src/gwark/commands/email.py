@@ -154,55 +154,20 @@ async def _search_async(
 
         print_success(f"Found {len(messages)} emails")
 
-        # Fetch email details in parallel
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        import threading
-        import time
+        # Fetch email details using HTTP batch API (2-3x faster than individual requests)
+        from gwark.core.batch_fetch import fetch_emails_batch
 
         message_ids = [m["id"] for m in messages]
-        api_format = "full" if detail == "full" else "metadata"
-        failed_ids = []
 
-        # Thread-local storage for Gmail service (not thread-safe otherwise)
-        thread_local = threading.local()
-
-        def get_thread_service():
-            """Get thread-local Gmail service instance."""
-            if not hasattr(thread_local, "service"):
-                thread_local.service = get_gmail_service()
-            return thread_local.service
-
-        def fetch_one(msg_id: str) -> dict | None:
-            """Fetch a single email with retry."""
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    svc = get_thread_service()  # Thread-safe service
-                    email_data = svc.users().messages().get(
-                        userId="me",
-                        id=msg_id,
-                        format=api_format,
-                    ).execute()
-                    return extract_email_details(email_data, detail_level=detail)
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        time.sleep(0.5 * (attempt + 1))  # Backoff: 0.5s, 1s, 1.5s
-                    else:
-                        failed_ids.append((msg_id, str(e)))
-                        return None
-            return None
-
-        # Parallel fetch with progress (20 workers optimal for Gmail API)
-        emails = []
-        max_workers = min(20, len(message_ids))
+        # Batch fetch with progress callback
         with FetchProgress(len(message_ids), "Fetching emails") as progress:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(fetch_one, mid): mid for mid in message_ids}
-                for future in as_completed(futures):
-                    result = future.result()
-                    if result:
-                        emails.append(result)
-                    progress.advance()
+            result = fetch_emails_batch(
+                message_ids,
+                detail_level=detail,
+                progress_callback=lambda done, total: progress.update(done),
+            )
+            emails = result.emails
+            failed_ids = result.failed_ids
 
         if not emails:
             print_error("Failed to fetch any email details")

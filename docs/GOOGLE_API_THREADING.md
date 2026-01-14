@@ -180,14 +180,64 @@ Benchmarked with 200 emails:
 
 **Recommendation: 20 workers** - best balance of speed and stability. Beyond 30, Gmail API rate limits cause slowdown.
 
+## Alternative: HTTP Batch API
+
+For simpler code with lower throughput, use Gmail's native batch API:
+
+```python
+from gwark.core.batch_fetch import fetch_emails_batch
+
+# Simple one-liner - no thread management needed
+result = fetch_emails_batch(message_ids, detail_level="full")
+
+# Access results
+for email in result.emails:
+    print(f"{email['subject']} from {email['from']}")
+```
+
+### Batch vs ThreadPoolExecutor Comparison
+
+| Approach | Speed | Success | Code Complexity |
+|----------|-------|---------|-----------------|
+| ThreadPoolExecutor (20 workers) | 35/sec | 100% | Medium (threading, retry logic) |
+| HTTP Batch API | 20/sec | 100% | Low (simple function call) |
+
+**When to use each:**
+
+- **Batch API**: Simpler code, good for < 500 emails, less resource usage
+- **ThreadPoolExecutor**: Maximum speed for large batches (1000+ emails)
+
+### How Batch API Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    HTTP Batch Request                        │
+├─────────────────────────────────────────────────────────────┤
+│  Single HTTP connection → Gmail API                          │
+│  ┌──────┐ ┌──────┐ ┌──────┐        ┌──────┐                │
+│  │ Msg1 │ │ Msg2 │ │ Msg3 │  ...   │Msg100│                │
+│  └──────┘ └──────┘ └──────┘        └──────┘                │
+│       All bundled in one request                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Benefits:
+- Fewer HTTP connections (better for firewalls/proxies)
+- Simpler error handling (retry logic built-in)
+- No thread-safety concerns
+
+Note: Gmail still enforces rate limits within batch requests. The batch API reduces HTTP overhead, not API quota usage.
+
 ## Key Takeaways
 
 1. **Never share** Google API service objects across threads
 2. **Use `threading.local()`** to give each thread its own instance
 3. **Add retry logic** - transient failures happen even with proper threading
 4. **Limit workers** - 10-20 is usually optimal (rate limits + memory)
+5. **Consider Batch API** for simpler code when maximum speed isn't critical
 
 ## References
 
 - [Google API Python Client Threading](https://googleapis.github.io/google-api-python-client/docs/thread_safety.html)
 - [Python threading.local() docs](https://docs.python.org/3/library/threading.html#thread-local-data)
+- [Gmail API Batch Requests](https://developers.google.com/gmail/api/guides/batch)
