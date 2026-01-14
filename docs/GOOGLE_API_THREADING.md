@@ -165,7 +165,20 @@ def fetch_emails_sequential(message_ids: list) -> list:
 | Approach | Emails/sec | Best For |
 |----------|------------|----------|
 | Sequential | ~3-5 | < 50 emails |
-| Parallel (10 workers) | ~15 | 50-5000 emails |
+| Parallel (20 workers) | ~35 | 50-5000 emails |
+
+## Optimal Worker Count
+
+Benchmarked with 200 emails:
+
+| Workers | Speed | Notes |
+|---------|-------|-------|
+| 10 | 23/sec | Conservative |
+| 20 | 35/sec | **Optimal** |
+| 30 | 36/sec | Marginal gain |
+| 50 | 30/sec | Rate limited |
+
+**Recommendation: 20 workers** - best balance of speed and stability. Beyond 30, Gmail API rate limits cause slowdown.
 
 ## Key Takeaways
 
