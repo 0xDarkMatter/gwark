@@ -159,22 +159,31 @@ async def _search_async(
 
         message_ids = [m["id"] for m in messages]
         api_format = "full" if detail == "full" else "metadata"
+        failed_ids = []
 
         def fetch_one(msg_id: str) -> dict | None:
-            """Fetch a single email."""
-            try:
-                email_data = service.users().messages().get(
-                    userId="me",
-                    id=msg_id,
-                    format=api_format,
-                ).execute()
-                return extract_email_details(email_data, detail_level=detail)
-            except Exception:
-                return None
+            """Fetch a single email with retry."""
+            import time
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    email_data = service.users().messages().get(
+                        userId="me",
+                        id=msg_id,
+                        format=api_format,
+                    ).execute()
+                    return extract_email_details(email_data, detail_level=detail)
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        time.sleep(0.5 * (attempt + 1))  # Backoff: 0.5s, 1s, 1.5s
+                    else:
+                        failed_ids.append((msg_id, str(e)))
+                        return None
+            return None
 
-        # Parallel fetch with progress
+        # Parallel fetch with progress (20 workers to avoid rate limits)
         emails = []
-        max_workers = min(50, len(message_ids))  # Cap at 50 concurrent
+        max_workers = min(20, len(message_ids))
         with FetchProgress(len(message_ids), "Fetching emails") as progress:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(fetch_one, mid): mid for mid in message_ids}
@@ -191,7 +200,11 @@ async def _search_async(
         # Sort by date (newest first)
         emails.sort(key=lambda x: x.get("date_timestamp", 0), reverse=True)
 
-        print_success(f"Processed {len(emails)} emails")
+        # Report results
+        if failed_ids:
+            print_info(f"Processed {len(emails)} emails ({len(failed_ids)} failed)")
+        else:
+            print_success(f"Processed {len(emails)} emails")
 
         # AI Summarization
         if summarize:
