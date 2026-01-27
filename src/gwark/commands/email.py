@@ -16,6 +16,12 @@ sys.path.insert(0, str(project_root))
 from gwark.core.config import load_config, get_profile
 from gwark.core.dates import date_to_gmail_query, format_short_date
 from gwark.core.email_utils import extract_email_details, extract_name, build_gmail_query
+from gwark.core.constants import (
+    EXIT_ERROR,
+    EXIT_AUTH_REQUIRED,
+    EXIT_NOT_FOUND,
+    EXIT_VALIDATION,
+)
 from gwark.core.output import (
     OutputFormatter,
     print_success,
@@ -115,7 +121,7 @@ async def _search_async(
 
         if not gmail_query:
             print_error("No search criteria provided. Use --domain, --sender, --query, etc.")
-            raise typer.Exit(1)
+            raise typer.Exit(EXIT_VALIDATION)
 
         print_info(f"Query: {gmail_query}")
 
@@ -171,7 +177,7 @@ async def _search_async(
 
         if not emails:
             print_error("Failed to fetch any email details")
-            raise typer.Exit(1)
+            raise typer.Exit(EXIT_ERROR)
 
         # Sort by date (newest first)
         emails.sort(key=lambda x: x.get("date_timestamp", 0), reverse=True)
@@ -220,10 +226,10 @@ async def _search_async(
     except ImportError as e:
         print_error(f"Missing dependency: {e}")
         print_info("Run: pip install -e .")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
     except Exception as e:
         print_error(f"Search failed: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
 
 def _format_email_markdown(emails: list, summarize: bool = False) -> str:
@@ -380,7 +386,7 @@ async def _sent_async(
 
     except Exception as e:
         print_error(f"Failed: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
 
 def _format_sent_markdown(emails: list, year: int, month: int, estimate_time: bool) -> str:
@@ -423,7 +429,7 @@ def summarize(
 
     if not input_file.exists():
         print_error(f"Input file not found: {input_file}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_NOT_FOUND)
 
     try:
         with open(input_file, "r", encoding="utf-8") as f:
@@ -444,4 +450,4 @@ def summarize(
 
     except Exception as e:
         print_error(f"Summarization failed: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)

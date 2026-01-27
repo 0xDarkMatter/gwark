@@ -14,6 +14,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from gwark.core.config import load_config, get_profile
+from gwark.core.constants import EXIT_ERROR
 from gwark.core.output import (
     OutputFormatter,
     print_success,
@@ -118,7 +119,7 @@ def list_calendars() -> None:
 
     except Exception as e:
         print_error(f"Failed: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
 
 @app.command()
@@ -324,10 +325,10 @@ def meetings(
     except ImportError as e:
         print_error(f"Missing dependency: {e}")
         print_info("Run: pip install -e . and ensure OAuth is configured")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
     except Exception as e:
         print_error(f"Failed: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
 
 def _format_meetings_markdown(meetings: list) -> str:

@@ -3,8 +3,8 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gmail-mcp"
-version = "0.1.0"
+name = "gwark"
+version = "0.2.0"
 description = "A robust Gmail integration for Model Context Protocol with support for large email volumes"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,7 +44,7 @@ dependencies = [
     "pyyaml>=6.0.0",
 
     # CLI & TUI
-    "typer[all]>=0.9.0",
+    "typer>=0.9.0",
     "rich>=13.0.0",
     "textual>=0.47.0",
 
@@ -161,3 +161,9 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+[tool.fabric]
+description = "Gmail integration - messages, threads, labels, search"
+resources = ["messages", "threads", "labels", "search", "calendar", "drive", "forms"]
+auth = "oauth2"
+status = "stable"

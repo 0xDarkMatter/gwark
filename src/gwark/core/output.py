@@ -1,16 +1,92 @@
-"""Output formatting utilities for gwark."""
+"""Output formatting utilities for gwark - Fabric Protocol compliant."""
 
 import csv
 import json
+import sys
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 from rich.table import Table
 
-console = Console()
+# Stream separation per Fabric Protocol:
+# - stdout: JSON data, formatted results (machine-readable)
+# - stderr: progress, warnings, errors, headers (human-readable)
+console = Console(stderr=True)  # Human-readable output to stderr
+console_data = Console()  # Data output to stdout
+
+
+def output_json(data: Any) -> None:
+    """Print JSON to stdout only (for piping)."""
+    print(json.dumps(data, indent=2, default=str))
+
+
+def output_list(
+    data: List[Any],
+    meta: Optional[Dict[str, Any]] = None,
+    as_json: bool = False,
+) -> None:
+    """Output a list with Fabric Protocol wrapper.
+
+    Args:
+        data: List of items to output
+        meta: Optional metadata (count auto-calculated if not provided)
+        as_json: If True, output JSON to stdout
+    """
+    if as_json:
+        result = {
+            "data": data,
+            "meta": meta or {
+                "count": len(data),
+                "timestamp": datetime.now().isoformat(),
+            },
+        }
+        output_json(result)
+
+
+def output_item(data: Dict[str, Any], as_json: bool = False) -> None:
+    """Output a single item with Fabric Protocol wrapper.
+
+    Args:
+        data: Item to output
+        as_json: If True, output JSON to stdout
+    """
+    if as_json:
+        output_json({"data": data})
+
+
+def output_error(
+    message: str,
+    code: str = "ERROR",
+    details: Optional[Dict[str, Any]] = None,
+    as_json: bool = False,
+    exit_code: int = 1,
+) -> None:
+    """Output an error in Fabric Protocol format.
+
+    Args:
+        message: Error message
+        code: Error code (e.g., "AUTH_REQUIRED", "NOT_FOUND")
+        details: Additional error details
+        as_json: If True, output JSON to stdout
+        exit_code: Exit code to use
+    """
+    if as_json:
+        error_obj = {
+            "error": {
+                "code": code,
+                "message": message,
+            }
+        }
+        if details:
+            error_obj["error"]["details"] = details
+        output_json(error_obj)
+    else:
+        print_error(message)
+
+    raise SystemExit(exit_code)
 
 
 class OutputFormatter:
@@ -38,15 +114,40 @@ class OutputFormatter:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return self.output_dir / f"{prefix}_{timestamp}.{extension}"
 
-    def to_json(self, data: Any, indent: int = 2) -> str:
-        """Convert data to JSON string.
+    def to_json(
+        self,
+        data: Any,
+        meta: Optional[Dict[str, Any]] = None,
+        indent: int = 2,
+    ) -> str:
+        """Convert data to JSON string with Fabric Protocol wrapper.
+
+        Args:
+            data: Data to serialize
+            meta: Optional metadata
+            indent: JSON indentation
+
+        Returns:
+            JSON string with {data, meta} wrapper
+        """
+        wrapper = {
+            "data": data,
+            "meta": meta or {
+                "count": len(data) if isinstance(data, list) else 1,
+                "timestamp": datetime.now().isoformat(),
+            },
+        }
+        return json.dumps(wrapper, indent=indent, default=str)
+
+    def to_json_raw(self, data: Any, indent: int = 2) -> str:
+        """Convert data to raw JSON string (no wrapper).
 
         Args:
             data: Data to serialize
             indent: JSON indentation
 
         Returns:
-            JSON string
+            JSON string (raw, no wrapper)
         """
         return json.dumps(data, indent=indent, default=str)
 
@@ -141,7 +242,7 @@ class OutputFormatter:
         columns: List[tuple],
         title: Optional[str] = None,
     ) -> None:
-        """Print a rich table to console.
+        """Print a rich table to console (stderr for human readability).
 
         Args:
             data: List of dictionaries
@@ -160,28 +261,29 @@ class OutputFormatter:
         console.print(table)
 
 
+# Human-readable output functions (all go to stderr)
 def print_success(message: str) -> None:
-    """Print a success message."""
+    """Print a success message to stderr."""
     console.print(f"[green][OK][/green] {message}")
 
 
 def print_info(message: str) -> None:
-    """Print an info message."""
+    """Print an info message to stderr."""
     console.print(f"[blue][INFO][/blue] {message}")
 
 
 def print_warning(message: str) -> None:
-    """Print a warning message."""
+    """Print a warning message to stderr."""
     console.print(f"[yellow][WARN][/yellow] {message}")
 
 
 def print_error(message: str) -> None:
-    """Print an error message."""
+    """Print an error message to stderr."""
     console.print(f"[red][ERROR][/red] {message}")
 
 
 def print_header(title: str) -> None:
-    """Print a section header."""
+    """Print a section header to stderr."""
     console.print()
     console.rule(f"[bold]{title}[/bold]")
     console.print()

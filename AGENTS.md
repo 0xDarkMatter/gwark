@@ -55,7 +55,7 @@ Supported formats via `--format` flag:
 
 | Package | Purpose |
 |---------|---------|
-| typer[all] | CLI framework |
+| typer | CLI framework |
 | rich | Console output |
 | pyyaml | Configuration |
 | pydantic | Schema validation |
