@@ -26,7 +26,10 @@ Built for devs, PMs, and anyone else who's sick of clicking through UI to answer
 ## Quick Start
 
 ```bash
-# Install
+# Install (using uv - recommended, 10-100x faster)
+uv pip install -e .
+
+# Or with standard pip
 pip install -e .
 
 # Initialize configuration
@@ -213,15 +216,18 @@ Optimized for Google Workspace business accounts:
 ## Development
 
 ```bash
-# Install with dev dependencies
+# Install with dev dependencies (uv recommended)
+uv pip install -e ".[dev]"
+
+# Or with standard pip
 pip install -e ".[dev]"
 
 # Run tests
 pytest
 
-# Format code
-black src/ tests/
-ruff check src/ tests/
+# Format code (or use uvx to run without installing)
+uvx black src/ tests/
+uvx ruff check src/ tests/
 ```
 
 ## Roadmap

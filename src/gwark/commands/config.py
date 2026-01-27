@@ -23,6 +23,12 @@ from gwark.core.config import (
     CONFIG_DIR,
     PROFILES_DIR,
 )
+from gwark.core.constants import (
+    EXIT_ERROR,
+    EXIT_AUTH_REQUIRED,
+    EXIT_NOT_FOUND,
+    EXIT_VALIDATION,
+)
 from gwark.core.output import (
     print_success,
     print_info,
@@ -65,10 +71,10 @@ def init(
     except FileExistsError as e:
         print_warning(str(e))
         print_info("Use --force to overwrite existing configuration")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
     except Exception as e:
         print_error(f"Failed to initialize: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
 
 @app.command()
@@ -81,7 +87,7 @@ def show(
     config_dir = find_config_dir()
     if not config_dir:
         print_warning("No .gwark directory found. Run 'gwark config init' first.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     print_info(f"Config directory: {config_dir}")
 
@@ -120,7 +126,7 @@ def profile_list() -> None:
     config_dir = find_config_dir()
     if not config_dir:
         print_warning("No .gwark directory found. Run 'gwark config init' first.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     config = load_config()
     profiles_dir = config_dir / PROFILES_DIR
@@ -155,12 +161,12 @@ def profile_create(
     config_dir = find_config_dir()
     if not config_dir:
         print_warning("No .gwark directory found. Run 'gwark config init' first.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     profile_path = config_dir / PROFILES_DIR / f"{name}.yaml"
     if profile_path.exists():
         print_warning(f"Profile '{name}' already exists.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     profile = ProfileConfig(name=name, description=description)
     save_profile(profile, config_dir)
@@ -178,16 +184,16 @@ def profile_delete(
     config_dir = find_config_dir()
     if not config_dir:
         print_warning("No .gwark directory found.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     profile_path = config_dir / PROFILES_DIR / f"{name}.yaml"
     if not profile_path.exists():
         print_warning(f"Profile '{name}' not found.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     if name == "default":
         print_warning("Cannot delete the default profile.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     if not force:
         confirm = typer.confirm(f"Delete profile '{name}'?")
@@ -217,7 +223,7 @@ def auth_setup(
             print_error(f"Credentials file not found: {credentials_path}")
             print_info("Download OAuth2 credentials from Google Cloud Console")
             print_info(f"Save as: {credentials_path}")
-            raise typer.Exit(1)
+            raise typer.Exit(EXIT_ERROR)
 
         print_info(f"Using credentials: {credentials_path}")
         print_info(f"Token storage: {tokens_path}")
@@ -236,14 +242,14 @@ def auth_setup(
             print_success(f"Authentication successful for account: {account_id}")
         else:
             print_error("Authentication failed")
-            raise typer.Exit(1)
+            raise typer.Exit(EXIT_ERROR)
 
     except ImportError as e:
         print_error(f"Missing dependency: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
     except Exception as e:
         print_error(f"Setup failed: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
 
 @auth_app.command("test")
@@ -266,7 +272,7 @@ def auth_test() -> None:
 
     except Exception as e:
         print_error(f"Connection failed: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
 
 @auth_app.command("list")
@@ -306,7 +312,7 @@ def auth_remove(
 
     if not token_file.exists():
         print_warning(f"Account '{account_id}' not found.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     if not force:
         confirm = typer.confirm(f"Remove account '{account_id}'?")

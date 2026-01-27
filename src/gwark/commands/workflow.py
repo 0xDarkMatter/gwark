@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from gwark.core.constants import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_VALIDATION
 from gwark.core.output import print_header, print_info, print_success, print_error
 from gwark.workflows.base import get_workflow, list_workflows
 
@@ -37,7 +38,7 @@ def run(
         since_date = datetime.strptime(since, "%Y-%m-%d")
     except ValueError:
         print_error(f"Invalid date format: {since}. Use YYYY-MM-DD.")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_VALIDATION)
 
     # Get workflow
     workflow_class = get_workflow(name)
@@ -46,7 +47,7 @@ def run(
         print_info("Available workflows:")
         for wf in list_workflows():
             print_info(f"  - {wf['name']}: {wf['description']}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_NOT_FOUND)
 
     print_header(f"gwark workflow: {name}")
     print_info(f"Account: {account}")
@@ -82,11 +83,11 @@ def run(
                     console.print(f"  {key}: {value}")
         else:
             print_error(f"Workflow failed: {result.error}")
-            raise typer.Exit(1)
+            raise typer.Exit(EXIT_ERROR)
 
     except Exception as e:
         print_error(f"Workflow error: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
 
 @app.command("list")
@@ -117,7 +118,7 @@ def show(
     workflow_class = get_workflow(name)
     if not workflow_class:
         print_error(f"Unknown workflow: {name}")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_ERROR)
 
     print_header(f"Workflow: {name}")
     console.print(f"[bold]Description:[/bold] {workflow_class.description}")
