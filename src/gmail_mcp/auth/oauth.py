@@ -96,14 +96,13 @@ def get_calendar_service() -> Any:
 def get_drive_service() -> Any:
     """Get authenticated Google Drive API service.
 
-    Convenience wrapper for drive API access.
+    Includes full access for listing, comments, and revision management.
 
     Returns:
         Authenticated Drive API v3 service
     """
     scopes: List[str] = [
-        'https://www.googleapis.com/auth/drive.readonly',
-        'https://www.googleapis.com/auth/drive.metadata.readonly'
+        'https://www.googleapis.com/auth/drive',  # Full access
     ]
     return get_google_service('drive', 'v3', scopes, 'drive_token.pickle')
 
@@ -134,3 +133,34 @@ def get_people_service() -> Any:
         'https://www.googleapis.com/auth/contacts.other.readonly',  # Other Contacts
     ]
     return get_google_service('people', 'v1', scopes, 'people_token.pickle')
+
+
+def get_forms_service() -> Any:
+    """Get authenticated Google Forms API service.
+
+    Convenience wrapper for Forms API access.
+    Supports reading/writing forms and reading responses.
+
+    Returns:
+        Authenticated Forms API v1 service
+    """
+    scopes: List[str] = [
+        'https://www.googleapis.com/auth/forms.body',              # Full read/write
+        'https://www.googleapis.com/auth/forms.responses.readonly',  # Read responses
+    ]
+    return get_google_service('forms', 'v1', scopes, 'forms_token.pickle')
+
+
+def get_docs_service() -> Any:
+    """Get authenticated Google Docs API service.
+
+    Convenience wrapper for Docs API access.
+    Supports full read/write access to documents.
+
+    Returns:
+        Authenticated Docs API v1 service
+    """
+    scopes: List[str] = [
+        'https://www.googleapis.com/auth/documents',  # Full read/write
+    ]
+    return get_google_service('docs', 'v1', scopes, 'docs_token.pickle')

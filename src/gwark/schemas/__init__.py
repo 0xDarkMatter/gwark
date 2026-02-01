@@ -7,6 +7,12 @@ from .config import (
     CalendarFilters,
     DriveFilters,
 )
+from .themes import (
+    TextStyle,
+    ParagraphStyle,
+    DocTheme,
+    get_default_theme,
+)
 
 __all__ = [
     "GwarkConfig",
@@ -14,4 +20,8 @@ __all__ = [
     "EmailFilters",
     "CalendarFilters",
     "DriveFilters",
+    "TextStyle",
+    "ParagraphStyle",
+    "DocTheme",
+    "get_default_theme",
 ]
