@@ -57,6 +57,9 @@ dependencies = [
     # Utilities
     "python-dateutil>=2.8.0",
     "pytz>=2023.3",
+
+    # Markdown parsing (for docs module)
+    "mistune>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -164,6 +167,6 @@ disallow_untyped_defs = false
 
 [tool.fabric]
 description = "Gmail integration - messages, threads, labels, search"
-resources = ["messages", "threads", "labels", "search", "calendar", "drive", "forms"]
+resources = ["messages", "threads", "labels", "search", "calendar", "drive", "forms", "docs"]
 auth = "oauth2"
 status = "stable"

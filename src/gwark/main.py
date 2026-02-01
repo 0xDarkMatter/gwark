@@ -4,7 +4,7 @@ import typer
 from rich.console import Console
 
 from gwark import __version__, __app_name__
-from gwark.commands import email, calendar, drive, config, workflow, forms
+from gwark.commands import email, calendar, drive, config, workflow, forms, docs
 
 # Initialize console for rich output
 console = Console()
@@ -24,6 +24,7 @@ app.add_typer(drive.app, name="drive", help="Drive operations (activity)")
 app.add_typer(config.app, name="config", help="Configuration management")
 app.add_typer(workflow.app, name="workflow", help="Workflow automation (triage)")
 app.add_typer(forms.app, name="forms", help="Forms operations (list, create, responses)")
+app.add_typer(docs.app, name="docs", help="Docs operations (create, edit, summarize)")
 
 
 @app.callback(invoke_without_command=True)

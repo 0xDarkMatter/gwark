@@ -6,6 +6,8 @@ from gmail_mcp.auth.oauth import (
     get_drive_service,
     get_gmail_service,
     get_people_service,
+    get_forms_service,
+    get_docs_service,
 )
 from gmail_mcp.auth.oauth2 import OAuth2Manager
 from gmail_mcp.auth.token_manager import TokenManager
@@ -16,6 +18,8 @@ __all__ = [
     "get_drive_service",
     "get_gmail_service",
     "get_people_service",
+    "get_forms_service",
+    "get_docs_service",
     "OAuth2Manager",
     "TokenManager",
 ]
