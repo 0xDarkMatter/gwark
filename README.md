@@ -54,6 +54,23 @@ gwark
 │   └── meetings    Extract calendar meetings (-i for interactive)
 ├── drive
 │   └── activity    Extract file activity (-i for interactive)
+├── forms
+│   ├── list        List Google Forms (via Drive)
+│   ├── get         Get form structure and questions
+│   ├── responses   Export form responses
+│   ├── create      Create new form
+│   └── add-question Add question to existing form
+├── docs
+│   ├── create      Create doc from prompt, markdown, or template
+│   ├── get         Export doc as markdown/JSON/text
+│   ├── edit        Section-aware editing (append, insert-after, move, delete)
+│   ├── sections    Analyze document structure (heading hierarchy)
+│   ├── theme       List, show, or apply themes
+│   ├── summarize   AI summarize document
+│   ├── comment     Manage comments (list, reply, resolve)
+│   ├── review      Process editorial comments with AI suggestions
+│   ├── apply       Apply approved gwark suggestions to document
+│   └── list        List Google Docs from Drive
 └── config
     ├── init        Initialize .gwark/ directory
     ├── show        Display configuration
@@ -121,6 +138,137 @@ gwark calendar meetings --work-only --profile work
 gwark drive activity --year 2025 --month 1
 ```
 
+### Forms
+
+```bash
+# List all forms
+gwark forms list
+
+# Get form structure
+gwark forms get FORM_ID
+
+# Export responses as CSV
+gwark forms responses FORM_ID --format csv
+
+# Create form with questions
+gwark forms create "Feedback Survey" --description "Customer feedback"
+gwark forms add-question FORM_ID --title "Rating" --type scale --high 10
+```
+
+### Docs
+
+```bash
+# Create from markdown file
+gwark docs create "Report" --file report.md --theme professional --open
+
+# Pipe from stdin (great for Fabric/Claude Code workflows)
+echo "# Hello" | gwark docs create "Quick Doc" -f -
+
+# AI-generated content via Claude Code
+claude "Write Q1 planning agenda as markdown" | gwark docs create "Meeting Notes" -f -
+
+# Export doc as markdown
+gwark docs get DOC_ID --format markdown
+
+# Append content to existing doc
+gwark docs edit DOC_ID --append "## New Section"
+
+# Summarize via Claude Code
+gwark docs summarize DOC_ID | claude "Summarize as bullet points"
+```
+
+#### Section-Aware Editing (v2)
+
+Collaborate safely without destroying others' work:
+
+```bash
+# View document structure (heading hierarchy with indices)
+gwark docs sections DOC_ID
+gwark docs sections DOC_ID --format tree
+
+# Preview changes before applying
+gwark docs edit DOC_ID --append "## New Section" --dry-run
+
+# Insert content after a specific section
+echo "New content here" | gwark docs edit DOC_ID --insert-after "Introduction" -f -
+
+# Move sections (reorder without destroying content)
+gwark docs edit DOC_ID --move-section "Conclusion" --before "References"
+gwark docs edit DOC_ID --move-section "Tesla" --after "Albanese"
+
+# Delete a specific section only
+gwark docs edit DOC_ID --delete-section "Draft Notes" --confirm
+```
+
+#### Editorial Workflow
+
+AI-powered editorial assistant that reviews your document and suggests improvements:
+
+```bash
+# Step 1: Add editorial comments in Google Docs UI
+# Select text and add comments like:
+#   "gwark: make this more concise"
+#   "gwark: rewrite in active voice"
+#   "gwark: fact-check this claim"
+
+# Step 2: Generate AI suggestions (posts as comment replies)
+gwark docs review DOC_ID
+
+# Step 3: Review suggestions in Google Docs, reply "accept" to approve
+
+# Step 4: Apply approved changes (modifies document)
+gwark docs apply DOC_ID --dry-run   # Preview first
+gwark docs apply DOC_ID              # Apply changes
+```
+
+**Supported instructions:**
+- Make this more concise
+- Rewrite in active voice
+- Clarify this section
+- Fix grammar
+- Suggest better wording
+- Expand with details
+- Simplify for beginners
+
+**Approval keywords:** Reply "accept", "approved", "yes", "apply", "ok", or "confirm" to any gwark suggestion to approve it for application.
+
+#### Comment Management
+
+Manage comments on Google Docs (list, reply, resolve):
+
+```bash
+# Create file-level comment
+gwark docs comment DOC_ID --text "Please review this section"
+
+# List all comments (includes anchored ones created in UI)
+gwark docs comment DOC_ID --list
+
+# Reply to a comment
+gwark docs comment DOC_ID --reply COMMENT_ID --text "Updated, see v2"
+
+# Resolve/reopen comments
+gwark docs comment DOC_ID --resolve COMMENT_ID
+gwark docs comment DOC_ID --unresolve COMMENT_ID
+```
+
+**Note**: Due to Google API limitations, gwark can only create file-level comments. To create anchored comments (attached to specific text), use the Google Docs UI. However, gwark can list, reply to, and resolve all comment types.
+
+**Edit options:**
+| Option | Description |
+|--------|-------------|
+| `--append` | Append content at document end |
+| `--prepend` | Prepend content at document start |
+| `--replace` | Replace text globally (`old::new`) |
+| `--insert-after` | Insert after a heading (section-aware) |
+| `--move-section` | Move section to new position |
+| `--before/--after` | Target position for move |
+| `--delete-section` | Delete section by heading |
+| `--dry-run` | Preview changes without applying |
+| `--confirm` | Require confirmation before apply |
+| `--highlight` | Yellow background on inserted content |
+| `--comment` | Add file comment explaining the edit |
+| `--keep-revision` | Mark revision as permanent |
+
 ## Configuration
 
 gwark uses a `.gwark/` directory for project-local configuration:
@@ -165,7 +313,7 @@ filters:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select existing
-3. Enable APIs: Gmail, Calendar, Drive
+3. Enable APIs: Gmail, Calendar, Drive, Forms, Docs
 4. Create OAuth2 credentials (Desktop App)
 5. Download credentials JSON
 6. Save as `.gwark/credentials/oauth2_credentials.json`
