@@ -208,12 +208,14 @@ def profile_delete(
 def auth_setup(
     account_id: str = typer.Option("primary", "--account-id", "-a", help="Account identifier"),
     manual: bool = typer.Option(False, "--manual", help="Use manual authorization code flow"),
+    port: int = typer.Option(8080, "--port", "-p", help="Port for OAuth callback"),
 ) -> None:
     """Set up OAuth2 authentication."""
     print_header("gwark config auth setup")
 
     try:
-        from gmail_mcp.auth import OAuth2Manager
+        from gmail_mcp.auth import OAuth2Manager, TokenManager
+        from pathlib import Path
 
         config = load_config()
         credentials_path = config.auth.credentials_path
@@ -228,17 +230,31 @@ def auth_setup(
         print_info(f"Using credentials: {credentials_path}")
         print_info(f"Token storage: {tokens_path}")
 
+        # Initialize OAuth2 manager with credentials path
         manager = OAuth2Manager(
-            credentials_path=str(credentials_path),
-            token_storage_path=str(tokens_path),
+            credentials_path=Path(credentials_path),
         )
 
-        print_info("Starting OAuth2 flow...")
-        print_info("A browser window will open for authentication.")
-
-        credentials = manager.get_credentials(account_id=account_id)
+        if manual:
+            # Manual flow - user copies authorization code
+            print_info("Starting manual OAuth2 flow...")
+            auth_url, state = manager.get_authorization_url()
+            print_info(f"\nOpen this URL in your browser:\n")
+            print(auth_url)
+            print()
+            auth_code = typer.prompt("Enter the authorization code")
+            credentials = manager.exchange_code_for_token(auth_code)
+        else:
+            # Local server flow - browser callback
+            print_info("Starting OAuth2 flow...")
+            print_info("A browser window will open for authentication.")
+            credentials = manager.run_local_server_flow(port=port)
 
         if credentials and credentials.valid:
+            # Save tokens using TokenManager
+            tokens_path.mkdir(parents=True, exist_ok=True)
+            token_manager = TokenManager(storage_path=tokens_path)
+            token_manager.save_credentials(credentials, account_id=account_id)
             print_success(f"Authentication successful for account: {account_id}")
         else:
             print_error("Authentication failed")

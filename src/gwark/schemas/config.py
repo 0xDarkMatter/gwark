@@ -1,9 +1,13 @@
 """Configuration schemas for gwark using Pydantic."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PlainSerializer
+
+
+# Custom type that serializes Path as string for YAML compatibility
+PathAsStr = Annotated[Path, PlainSerializer(lambda p: str(p), return_type=str)]
 
 
 class EmailFilters(BaseModel):
@@ -65,11 +69,11 @@ class ProfileConfig(BaseModel):
 class AuthConfig(BaseModel):
     """Authentication configuration."""
 
-    credentials_path: Path = Field(
+    credentials_path: PathAsStr = Field(
         default=Path(".gwark/credentials/oauth2_credentials.json"),
         description="Path to OAuth2 credentials file"
     )
-    tokens_path: Path = Field(
+    tokens_path: PathAsStr = Field(
         default=Path(".gwark/tokens"),
         description="Directory for storing OAuth2 tokens"
     )
@@ -101,7 +105,7 @@ class DefaultsConfig(BaseModel):
     days_back: int = Field(default=30, description="Default days to look back")
     max_results: int = Field(default=500, description="Default max results")
     output_format: str = Field(default="markdown", description="Default output format")
-    output_directory: Path = Field(default=Path("./reports"), description="Default output directory")
+    output_directory: PathAsStr = Field(default=Path("./reports"), description="Default output directory")
     detail_level: str = Field(default="summary", description="Default detail level")
 
 
