@@ -134,8 +134,27 @@ Section-aware operations that don't destroy collaborators' work:
 - Move extracts paragraph styles and re-applies them after insertion
 - Sections command outputs table/tree/json formats
 
+## Configuration Schema (CRITICAL)
+
+When adding Path fields to Pydantic models in `schemas/config.py`, **always use `PathAsStr`** instead of `Path` to ensure YAML serialization works correctly:
+
+```python
+from gwark.schemas.config import PathAsStr  # Import the custom type
+
+class MyConfig(BaseModel):
+    # CORRECT - serializes to string in YAML
+    output_dir: PathAsStr = Field(default=Path("./output"))
+
+    # WRONG - causes YAML parsing errors with Python-specific tags
+    # output_dir: Path = Field(default=Path("./output"))
+```
+
+**Why?** Raw `Path` objects serialize to YAML as `!!python/object/apply:pathlib._local.WindowsPath` which can't be loaded by safe YAML parsers. The `PathAsStr` type uses Pydantic's `PlainSerializer` to convert paths to strings automatically.
+
 ## Don't
 
 - Don't use async batch operations for Gmail (causes SSL errors)
 - Don't commit `.env` or `.gwark/credentials/oauth2_credentials.json`
+- Don't commit `.gwark/tokens/` (contains OAuth tokens)
 - Don't hardcode API keys
+- Don't use raw `Path` type in Pydantic models that get YAML-serialized (use `PathAsStr`)
