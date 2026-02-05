@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Shared OAuth2 authentication for Google APIs."""
 
+import os
 import sys
 import pickle
 from pathlib import Path
@@ -10,6 +11,31 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+
+
+def get_gwark_dir() -> Path:
+    """Get the gwark configuration directory.
+
+    Resolution order:
+    1. GWARK_CONFIG_DIR environment variable (if set)
+    2. Current working directory's .gwark/ (if it exists)
+    3. User home ~/.gwark/ (default)
+
+    Returns:
+        Path to the gwark configuration directory
+    """
+    # 1. Check environment variable
+    env_dir = os.environ.get("GWARK_CONFIG_DIR")
+    if env_dir:
+        return Path(env_dir)
+
+    # 2. Check current working directory
+    cwd_gwark = Path.cwd() / ".gwark"
+    if cwd_gwark.exists():
+        return cwd_gwark
+
+    # 3. Fall back to user home
+    return Path.home() / ".gwark"
 
 
 def get_google_service(
@@ -25,6 +51,11 @@ def get_google_service(
     - Refreshing expired tokens
     - Running the OAuth2 flow for new authentication
     - Saving credentials for future use
+
+    Configuration is loaded from (in order):
+    1. GWARK_CONFIG_DIR environment variable
+    2. Current directory's .gwark/
+    3. ~/.gwark/
 
     Args:
         service_name: Google API service name (e.g., 'calendar', 'drive', 'gmail')
@@ -44,9 +75,9 @@ def get_google_service(
         >>> events = service.events().list(calendarId='primary').execute()
     """
     creds: Optional[Credentials] = None
-    project_root: Path = Path(__file__).parent.parent.parent.parent
-    token_path: Path = project_root / '.gwark' / 'tokens' / token_filename
-    creds_path: Path = project_root / '.gwark' / 'credentials' / 'oauth2_credentials.json'
+    gwark_dir: Path = get_gwark_dir()
+    token_path: Path = gwark_dir / 'tokens' / token_filename
+    creds_path: Path = gwark_dir / 'credentials' / 'oauth2_credentials.json'
 
     # Create directories if they don't exist
     token_path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,8 +95,14 @@ def get_google_service(
         else:
             if not creds_path.exists():
                 print(f"[ERROR] OAuth2 credentials not found at {creds_path}")
-                print("Please download credentials from Google Cloud Console")
-                print("and save to .gwark/credentials/oauth2_credentials.json")
+                print("")
+                print("Please download credentials from Google Cloud Console and save to:")
+                print(f"  {gwark_dir / 'credentials' / 'oauth2_credentials.json'}")
+                print("")
+                print("Configuration lookup order:")
+                print("  1. GWARK_CONFIG_DIR environment variable")
+                print("  2. Current directory's .gwark/")
+                print("  3. ~/.gwark/")
                 sys.exit(1)
 
             print("[INFO] Starting OAuth2 authentication flow...")
@@ -186,9 +223,9 @@ def get_sheets_credentials() -> Credentials:
     ]
 
     creds: Optional[Credentials] = None
-    project_root: Path = Path(__file__).parent.parent.parent.parent
-    token_path: Path = project_root / '.gwark' / 'tokens' / 'sheets_token.pickle'
-    creds_path: Path = project_root / '.gwark' / 'credentials' / 'oauth2_credentials.json'
+    gwark_dir: Path = get_gwark_dir()
+    token_path: Path = gwark_dir / 'tokens' / 'sheets_token.pickle'
+    creds_path: Path = gwark_dir / 'credentials' / 'oauth2_credentials.json'
 
     # Create directories if they don't exist
     token_path.parent.mkdir(parents=True, exist_ok=True)
@@ -206,8 +243,14 @@ def get_sheets_credentials() -> Credentials:
         else:
             if not creds_path.exists():
                 print(f"[ERROR] OAuth2 credentials not found at {creds_path}")
-                print("Please download credentials from Google Cloud Console")
-                print("and save to .gwark/credentials/oauth2_credentials.json")
+                print("")
+                print("Please download credentials from Google Cloud Console and save to:")
+                print(f"  {gwark_dir / 'credentials' / 'oauth2_credentials.json'}")
+                print("")
+                print("Configuration lookup order:")
+                print("  1. GWARK_CONFIG_DIR environment variable")
+                print("  2. Current directory's .gwark/")
+                print("  3. ~/.gwark/")
                 sys.exit(1)
 
             print("[INFO] Starting OAuth2 authentication flow for Sheets...")
