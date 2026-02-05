@@ -9,9 +9,11 @@
 
 Ever tried to find that one email from six months ago? The one with the attachment? From someone whose name you *almost* remember? Yeah, Gmail search isn't it.
 
-gwark is the command-line power tool Google Workspace desperately needed. Search thousands of emails in seconds with actual query syntax, not whatever algorithm Google thinks you meant. Get AI-powered summaries that cut through corporate reply-all chains. Browse your calendar without opening seventeen Chrome tabs. Export everything to formats that actually work with other tools.
+gwark is the command-line power tool Google Workspace desperately needed. Search thousands of emails in seconds with actual query syntax, not whatever algorithm Google thinks you meant. Get AI-powered summaries that cut through corporate reply-all chains. Browse your calendar without opening seventeen Chrome tabs. Create pivot tables without clicking through endless menus. Export everything to formats that actually work with other tools.
 
 Built for devs, PMs, and anyone else who's sick of clicking through UI to answer "what did I even work on last quarter?" Your terminal is faster than your browser — let's use it.
+
+Think of it as `git` for your Google stuff: composable commands, scriptable workflows, and zero mouse required. Pipe Claude's output directly into Docs. Batch-process form responses. Turn meeting data into reports. This is productivity tooling that respects your time and your keyboard.
 
 ## Why gwark?
 
@@ -456,7 +458,6 @@ uvx ruff check src/ tests/
 - [x] Interactive terminal viewers for email, calendar, drive, sheets
 - [x] Parallel fetching (email 50 threads, calendar multi-calendar, sheets batch)
 - [x] Google Sheets with pivot tables and auto-styling
-- [ ] MCP Server for Claude Desktop integration
 - [ ] Summary caching to avoid re-processing
 - [ ] Multi-account support
 
