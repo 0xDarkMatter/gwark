@@ -10,6 +10,7 @@ from gmail_mcp.auth.oauth import (
     get_docs_service,
     get_sheets_credentials,
     get_sheets_client,
+    get_slides_service,
 )
 from gmail_mcp.auth.oauth2 import OAuth2Manager
 from gmail_mcp.auth.token_manager import TokenManager
@@ -24,6 +25,7 @@ __all__ = [
     "get_docs_service",
     "get_sheets_credentials",
     "get_sheets_client",
+    "get_slides_service",
     "OAuth2Manager",
     "TokenManager",
 ]

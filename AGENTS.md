@@ -216,6 +216,53 @@ class MyConfig(BaseModel):
 
 **Why?** Raw `Path` objects serialize to YAML as `!!python/object/apply:pathlib._local.WindowsPath` which can't be loaded by safe YAML parsers. The `PathAsStr` type uses Pydantic's `PlainSerializer` to convert paths to strings automatically.
 
+## Slides Module
+
+Uses **Google Slides API** directly (like Docs, unlike Sheets which uses gspread).
+
+| File | Purpose |
+|------|---------|
+| `core/slides_client.py` | High-level Slides API wrapper (`SlidesClient` class) |
+| `commands/slides.py` | CLI commands (list, get, create, add-slide, edit, export) |
+| `auth/oauth.py` | `get_slides_service()` returns authenticated API service |
+
+**Key classes:**
+- `SlidesClient` - Wraps Slides API with methods for common operations
+- `SlideInfo` - Dataclass representing a slide with title, notes, elements
+- `PresentationStructure` - Parsed presentation with slide list and lookup methods
+
+**OAuth Scopes:**
+- `presentations` - Full read/write access to Slides
+
+**Features:**
+- Accepts both presentation ID and full URL (auto-extracts ID)
+- Stdin support: `echo "# Title\n- Point" | gwark slides create "Deck" -f -`
+- Markdown format for slide creation (--- separates slides)
+- Speaker notes via `## Speaker Notes` section
+- Interactive viewer with split-pane layout
+- Template cloning via Drive API copy
+- Text replacement across all slides
+- Slide reordering and deletion
+
+**Markdown Format:**
+```markdown
+# Slide Title
+- Bullet point 1
+- Bullet point 2
+
+## Speaker Notes
+Notes here (not shown on slide)
+
+---
+
+# Next Slide
+More content
+```
+
+**Note: PDF Export Limitation**
+Google Slides API does not support direct PDF export.
+Workaround: Use Drive API export (requires `drive` scope).
+
 ## Don't
 
 - Don't use async batch operations for Gmail (causes SSL errors)

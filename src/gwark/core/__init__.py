@@ -21,6 +21,12 @@ from .async_utils import (
     retry_with_backoff,
     async_retry_with_backoff,
 )
+from .slides_client import (
+    SlidesClient,
+    SlideInfo,
+    SlideElement,
+    PresentationStructure,
+)
 
 __all__ = [
     "load_config",
@@ -45,4 +51,8 @@ __all__ = [
     "parallel_map",
     "retry_with_backoff",
     "async_retry_with_backoff",
+    "SlidesClient",
+    "SlideInfo",
+    "SlideElement",
+    "PresentationStructure",
 ]
