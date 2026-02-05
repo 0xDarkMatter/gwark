@@ -123,7 +123,7 @@ Uses **gspread** library (not raw google-api-python-client) for cleaner, more Py
 | File | Purpose |
 |------|---------|
 | `core/sheets_client.py` | High-level gspread wrapper (`SheetsClient` class) |
-| `commands/sheets.py` | CLI commands (list, get, read, write, create, append, clear, export, pivot) |
+| `commands/sheets.py` | CLI commands (list, get, read, write, create, append, clear, export, pivot, resize) |
 | `ui/viewer.py` | `TerminalSheetsViewer` for interactive grid navigation |
 | `auth/oauth.py` | `get_sheets_client()` returns authenticated gspread client |
 
@@ -141,8 +141,19 @@ Uses **gspread** library (not raw google-api-python-client) for cleaner, more Py
 - Stdin support: `echo "A,B\n1,2" | gwark sheets write ID -f -`
 - Auto-detects CSV vs JSON input format
 - Interactive grid viewer with arrow key navigation
-- **Pivot tables** via `gwark sheets pivot` command
+- **Pivot tables** via `gwark sheets pivot` command (auto-styled by default)
 - **Parallel range reads** via `batch_read_parallel()` method
+- **Column resizing** via `set_column_widths()` and `auto_resize_columns()`
+
+**Pivot Table Default Style:**
+Pivot tables are automatically styled when created via `create_pivot_table()`:
+- Font: Roboto 10pt, dark grey text (#424242)
+- Header: Light blue background (#e3f2fd), bold
+- Data rows: White background
+- Subtotal rows: Light gray (#f5f5f5), bold
+- Grand Total: Medium gray (#e0e0e0), bold
+
+To disable auto-styling: `create_pivot_table(..., apply_style=False)`
 
 ## Forms Module
 
