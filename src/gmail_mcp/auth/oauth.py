@@ -164,3 +164,80 @@ def get_docs_service() -> Any:
         'https://www.googleapis.com/auth/documents',  # Full read/write
     ]
     return get_google_service('docs', 'v1', scopes, 'docs_token.pickle')
+
+
+def get_sheets_credentials() -> Credentials:
+    """Get Google Sheets OAuth2 credentials.
+
+    Returns raw Credentials object for use with gspread.authorize().
+    Handles loading existing tokens, refreshing expired tokens,
+    and running OAuth2 flow for new authentication.
+
+    Returns:
+        google.oauth2.credentials.Credentials object
+
+    Raises:
+        SystemExit: If OAuth2 credentials file is not found
+    """
+    scopes: List[str] = [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive.file',  # Create/edit files created by this app
+        'https://www.googleapis.com/auth/drive.metadata.readonly',
+    ]
+
+    creds: Optional[Credentials] = None
+    project_root: Path = Path(__file__).parent.parent.parent.parent
+    token_path: Path = project_root / '.gwark' / 'tokens' / 'sheets_token.pickle'
+    creds_path: Path = project_root / '.gwark' / 'credentials' / 'oauth2_credentials.json'
+
+    # Create directories if they don't exist
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing token
+    if token_path.exists():
+        with open(token_path, 'rb') as token:
+            creds = pickle.load(token)
+
+    # If no valid credentials, authenticate
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            print("[INFO] Refreshing Sheets credentials...")
+            creds.refresh(Request())
+        else:
+            if not creds_path.exists():
+                print(f"[ERROR] OAuth2 credentials not found at {creds_path}")
+                print("Please download credentials from Google Cloud Console")
+                print("and save to .gwark/credentials/oauth2_credentials.json")
+                sys.exit(1)
+
+            print("[INFO] Starting OAuth2 authentication flow for Sheets...")
+            flow: InstalledAppFlow = InstalledAppFlow.from_client_secrets_file(
+                str(creds_path), scopes)
+            creds = flow.run_local_server(port=0)
+
+        # Save credentials for future use
+        with open(token_path, 'wb') as token:
+            pickle.dump(creds, token)
+        print("[OK] Sheets credentials saved")
+
+    return creds
+
+
+def get_sheets_client() -> Any:
+    """Get authenticated gspread client using Gwark's OAuth system.
+
+    This is the primary entry point for Google Sheets operations.
+    Uses gspread library for a cleaner, more Pythonic API.
+
+    Returns:
+        gspread.Client: Authenticated gspread client
+
+    Example:
+        >>> gc = get_sheets_client()
+        >>> sheet = gc.open('My Spreadsheet')
+        >>> worksheet = sheet.sheet1
+        >>> data = worksheet.get_all_records()
+    """
+    import gspread
+    creds = get_sheets_credentials()
+    return gspread.authorize(creds)

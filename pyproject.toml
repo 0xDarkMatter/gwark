@@ -60,9 +60,17 @@ dependencies = [
 
     # Markdown parsing (for docs module)
     "mistune>=3.0.0",
+
+    # Google Sheets (gspread)
+    "gspread>=6.0.0",
 ]
 
 [project.optional-dependencies]
+sheets = [
+    "gspread-dataframe>=4.0.0",
+    "gspread-formatting>=1.1.0",
+    "pandas>=2.0.0",
+]
 dev = [
     # Testing
     "pytest>=7.4.0",
@@ -167,6 +175,6 @@ disallow_untyped_defs = false
 
 [tool.fabric]
 description = "Gmail integration - messages, threads, labels, search"
-resources = ["messages", "threads", "labels", "search", "calendar", "drive", "forms", "docs"]
+resources = ["messages", "threads", "labels", "search", "calendar", "drive", "forms", "docs", "sheets"]
 auth = "oauth2"
 status = "stable"

@@ -4,7 +4,7 @@ This document provides context for AI assistants working on the gwark codebase.
 
 ## Project Overview
 
-**gwark** is a Google Workspace CLI tool built with Python/Typer for Gmail, Calendar, Drive, Forms, and Docs operations. It uses OAuth2 for authentication and supports AI-powered summarization via Claude.
+**gwark** is a Google Workspace CLI tool built with Python/Typer for Gmail, Calendar, Drive, Forms, Docs, and **Sheets** operations. It uses OAuth2 for authentication and supports AI-powered summarization via Claude.
 
 ## Architecture
 
@@ -12,8 +12,9 @@ This document provides context for AI assistants working on the gwark codebase.
 src/
 ├── gwark/                  # CLI application (Typer)
 │   ├── main.py             # Entry point, subcommand registration
-│   ├── commands/           # Command modules (email, calendar, drive, config, forms, docs)
-│   ├── core/               # Utilities (config, output, dates, markdown_converter, docs_analyzer)
+│   ├── commands/           # Command modules (email, calendar, drive, config, forms, docs, sheets)
+│   ├── core/               # Utilities (config, output, dates, markdown_converter, docs_analyzer, sheets_client)
+│   ├── ui/                 # Interactive viewers (email, calendar, sheets grid)
 │   └── schemas/            # Pydantic models (config, themes)
 │
 └── gmail_mcp/              # Core library (reusable)
@@ -60,6 +61,7 @@ Supported formats via `--format` flag:
 | pyyaml | Configuration |
 | pydantic | Schema validation |
 | google-api-python-client | Google APIs |
+| gspread | Google Sheets (cleaner API than raw client) |
 | anthropic | AI summarization |
 | mistune | Markdown parsing (for docs module) |
 
@@ -82,13 +84,65 @@ python -m gwark email search --domain example.com --days 1 --max-results 3
 | Add profile filter | `src/gwark/schemas/config.py` + `.gwark/profiles/*.yaml` |
 | Add doc theme | `src/gwark/schemas/themes.py` + `.gwark/themes/*.yaml` |
 | Add doc section operation | `src/gwark/core/docs_analyzer.py` + `commands/docs.py` |
+| Add sheets operation | `src/gwark/core/sheets_client.py` + `commands/sheets.py` |
 | Add Google API service | `src/gmail_mcp/auth/oauth.py` (add get_*_service function) |
 
 ## Current Status
 
-- **Working**: CLI, email search, config, forms, docs (v2 with section-aware editing)
-- **Needs Testing**: Calendar meetings, Drive activity
-- **Planned**: MCP server, summary caching, retry logic
+- **Working**: CLI, email search, config, forms, docs (v2 with section-aware editing), **sheets** (full CRUD + pivot tables)
+- **Optimized**: Calendar (parallel multi-calendar fetching), Sheets (parallel range reads)
+- **Needs Testing**: Drive activity
+- **Planned**: MCP server, summary caching
+
+## Async Utilities
+
+Located in `src/gwark/core/async_utils.py`:
+
+| Class/Function | Purpose |
+|----------------|---------|
+| `AsyncFetcher` | Bounded parallel execution with rate limiting |
+| `SyncRateLimiter` | Token bucket rate limiter |
+| `run_async()` | Sync wrapper for async code in CLI |
+| `parallel_map()` | Convenience function for parallel mapping |
+
+**Usage pattern:**
+```python
+from gwark.core.async_utils import AsyncFetcher, run_async
+
+async def fetch_all_items():
+    fetcher = AsyncFetcher(max_concurrent=10, rate_per_second=50)
+    return await fetcher.fetch_all(items, api_call_func)
+
+results = run_async(fetch_all_items())
+```
+
+## Sheets Module
+
+Uses **gspread** library (not raw google-api-python-client) for cleaner, more Pythonic API.
+
+| File | Purpose |
+|------|---------|
+| `core/sheets_client.py` | High-level gspread wrapper (`SheetsClient` class) |
+| `commands/sheets.py` | CLI commands (list, get, read, write, create, append, clear, export, pivot) |
+| `ui/viewer.py` | `TerminalSheetsViewer` for interactive grid navigation |
+| `auth/oauth.py` | `get_sheets_client()` returns authenticated gspread client |
+
+**Key classes:**
+- `SheetsClient` - Wraps gspread with methods for common operations
+- `TerminalSheetsViewer` - Grid viewer with cursor navigation and cell detail
+
+**OAuth Scopes:**
+- `spreadsheets` - Full read/write access to Sheets
+- `drive.file` - Create files (required for `create` command)
+- `drive.metadata.readonly` - List files (required for `list` command)
+
+**Features:**
+- Accepts both spreadsheet ID and full URL (auto-extracts ID)
+- Stdin support: `echo "A,B\n1,2" | gwark sheets write ID -f -`
+- Auto-detects CSV vs JSON input format
+- Interactive grid viewer with arrow key navigation
+- **Pivot tables** via `gwark sheets pivot` command
+- **Parallel range reads** via `batch_read_parallel()` method
 
 ## Forms Module
 

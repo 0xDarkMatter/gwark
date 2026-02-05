@@ -71,6 +71,15 @@ gwark
 │   ├── review      Process editorial comments with AI suggestions
 │   ├── apply       Apply approved gwark suggestions to document
 │   └── list        List Google Docs from Drive
+├── sheets
+│   ├── list        List spreadsheets (-i for interactive)
+│   ├── get         Get spreadsheet metadata + worksheets
+│   ├── read        Read data from range (-i for grid viewer)
+│   ├── write       Write data from file/stdin
+│   ├── create      Create new spreadsheet
+│   ├── append      Append rows to sheet
+│   ├── clear       Clear cells in range
+│   └── export      Export as CSV/JSON
 └── config
     ├── init        Initialize .gwark/ directory
     ├── show        Display configuration
@@ -232,6 +241,49 @@ gwark docs apply DOC_ID              # Apply changes
 
 **Approval keywords:** Reply "accept", "approved", "yes", "apply", "ok", or "confirm" to any gwark suggestion to approve it for application.
 
+### Sheets
+
+```bash
+# List all spreadsheets (most recent first)
+gwark sheets list
+gwark sheets list -i                      # Interactive browser
+
+# Get spreadsheet info (worksheets, metadata)
+gwark sheets get SHEET_ID
+
+# Read data from sheet
+gwark sheets read SHEET_ID                      # Entire first sheet
+gwark sheets read SHEET_ID -r "A1:D10"          # Specific range
+gwark sheets read SHEET_ID -s "Sales Data"      # By sheet name
+gwark sheets read SHEET_ID -i                   # Interactive grid viewer
+
+# Write data (CSV/JSON from file or stdin)
+gwark sheets write SHEET_ID -f data.csv
+echo "A,B,C\n1,2,3" | gwark sheets write SHEET_ID -f -
+
+# Create new spreadsheet
+gwark sheets create "Q1 Report" --open          # Opens in browser
+
+# Append rows to existing sheet
+cat new_rows.csv | gwark sheets append SHEET_ID -f -
+
+# Clear a range
+gwark sheets clear SHEET_ID "Sheet1!A10:D20" --confirm
+
+# Export
+gwark sheets export SHEET_ID --format csv
+gwark sheets export SHEET_ID --sheet "Summary" -o summary.csv
+```
+
+**Interactive grid viewer** (`-i` flag):
+| Key | Action |
+|-----|--------|
+| `↑↓←→` | Navigate cells |
+| `Enter` | View cell detail (full content, formula) |
+| `Tab` | Next worksheet |
+| `o` | Open in Google Sheets |
+| `q` | Quit |
+
 #### Comment Management
 
 Manage comments on Google Docs (list, reply, resolve):
@@ -313,7 +365,7 @@ filters:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select existing
-3. Enable APIs: Gmail, Calendar, Drive, Forms, Docs
+3. Enable APIs: Gmail, Calendar, Drive, Forms, Docs, **Sheets**
 4. Create OAuth2 credentials (Desktop App)
 5. Download credentials JSON
 6. Save as `.gwark/credentials/oauth2_credentials.json`

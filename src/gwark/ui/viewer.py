@@ -1291,3 +1291,266 @@ def view_emails(emails: list[dict[str, Any]], title: str = "Email Results", tui:
     else:
         viewer = TerminalEmailViewer(emails, title=title)
         viewer.run()
+
+
+# =============================================================================
+# Sheets Viewer
+# =============================================================================
+
+
+class TerminalSheetsViewer:
+    """Interactive spreadsheet grid viewer with arrow key navigation."""
+
+    def __init__(
+        self,
+        data: list[list[Any]],
+        title: str = "Spreadsheet",
+        sheet_url: str = "",
+    ) -> None:
+        self.data = data
+        self.title = title
+        self.sheet_url = sheet_url
+        self.console = Console()
+
+        # Cursor position
+        self.cursor_row = 0
+        self.cursor_col = 0
+
+        # Viewport
+        self.view_row = 0
+        self.view_col = 0
+        self.visible_rows = 20
+        self.visible_cols = 8
+        self.col_width = 12
+
+        # Data dimensions
+        self.max_rows = len(data)
+        self.max_cols = max(len(row) for row in data) if data else 0
+
+    def _col_letter(self, index: int) -> str:
+        """Convert column index to letter (0 -> A, 25 -> Z, 26 -> AA)."""
+        result = ""
+        i = index
+        while i >= 0:
+            result = chr(i % 26 + ord('A')) + result
+            i = i // 26 - 1
+        return result
+
+    def _get_cell(self, row: int, col: int) -> str:
+        """Get cell value safely."""
+        if row < 0 or row >= len(self.data):
+            return ""
+        if col < 0 or col >= len(self.data[row]):
+            return ""
+        return str(self.data[row][col])
+
+    def _build_grid(self) -> Table:
+        """Build Rich table showing visible portion of sheet."""
+        import shutil
+        term_width = shutil.get_terminal_size().columns
+        term_height = shutil.get_terminal_size().lines
+
+        # Calculate visible dimensions
+        self.visible_rows = max(10, term_height - 8)
+        self.visible_cols = max(4, (term_width - 8) // (self.col_width + 3))
+
+        # Adjust viewport to keep cursor visible
+        if self.cursor_row < self.view_row:
+            self.view_row = self.cursor_row
+        if self.cursor_row >= self.view_row + self.visible_rows:
+            self.view_row = self.cursor_row - self.visible_rows + 1
+        if self.cursor_col < self.view_col:
+            self.view_col = self.cursor_col
+        if self.cursor_col >= self.view_col + self.visible_cols:
+            self.view_col = self.cursor_col - self.visible_cols + 1
+
+        # Build table
+        cell_ref = f"{self._col_letter(self.cursor_col)}{self.cursor_row + 1}"
+        table = Table(
+            title=f"{self.title} | Cell: {cell_ref}",
+            show_lines=True,
+            expand=False,
+            box=None,
+        )
+
+        # Row number column
+        table.add_column("", width=5, style="dim")
+
+        # Data columns
+        for col_idx in range(self.view_col, min(self.view_col + self.visible_cols, self.max_cols)):
+            col_letter = self._col_letter(col_idx)
+            is_cursor_col = (col_idx == self.cursor_col)
+            style = "bold cyan" if is_cursor_col else "dim"
+            table.add_column(col_letter, width=self.col_width, style=style)
+
+        # Data rows
+        for row_idx in range(self.view_row, min(self.view_row + self.visible_rows, self.max_rows)):
+            is_cursor_row = (row_idx == self.cursor_row)
+            row_num = str(row_idx + 1)
+
+            cells = [row_num]
+            for col_idx in range(self.view_col, min(self.view_col + self.visible_cols, self.max_cols)):
+                value = self._get_cell(row_idx, col_idx)
+                display = value[:self.col_width - 1] if len(value) > self.col_width - 1 else value
+
+                is_cursor = (row_idx == self.cursor_row and col_idx == self.cursor_col)
+                if is_cursor:
+                    display = f"[reverse bold]{display}[/]"
+
+                cells.append(display)
+
+            # Pad if needed
+            while len(cells) < self.visible_cols + 1:
+                cells.append("")
+
+            style = "bold" if is_cursor_row else None
+            table.add_row(*cells, style=style)
+
+        return table
+
+    def _show_cell_detail(self) -> None:
+        """Show full cell content in a panel."""
+        value = self._get_cell(self.cursor_row, self.cursor_col)
+        cell_ref = f"{self._col_letter(self.cursor_col)}{self.cursor_row + 1}"
+
+        self.console.clear()
+        self.console.print(Panel(
+            value if value else "(empty)",
+            title=f"Cell {cell_ref}",
+            border_style="green",
+            padding=(1, 2),
+        ))
+        self.console.print("\n[dim]Press any key to continue...[/dim]")
+        self._getch()
+
+    def _open_in_browser(self) -> None:
+        """Open spreadsheet in browser."""
+        if self.sheet_url:
+            webbrowser.open(self.sheet_url)
+
+    def _getch(self) -> str:
+        """Get a single keypress."""
+        import sys
+        if sys.platform == 'win32':
+            import msvcrt
+            ch = msvcrt.getch()
+            if ch in (b'\x00', b'\xe0'):
+                ch2 = msvcrt.getch()
+                if ch2 == b'H': return 'up'
+                if ch2 == b'P': return 'down'
+                if ch2 == b'K': return 'left'
+                if ch2 == b'M': return 'right'
+                if ch2 == b'I': return 'pgup'
+                if ch2 == b'Q': return 'pgdn'
+                if ch2 == b'G': return 'home'
+                if ch2 == b'O': return 'end'
+            if ch == b'\r': return 'enter'
+            if ch == b'\x1b': return 'esc'
+            if ch == b'\t': return 'tab'
+            return ch.decode('utf-8', errors='ignore').lower()
+        else:
+            import tty, termios
+            fd = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':
+                    ch2 = sys.stdin.read(1)
+                    if ch2 == '[':
+                        ch3 = sys.stdin.read(1)
+                        if ch3 == 'A': return 'up'
+                        if ch3 == 'B': return 'down'
+                        if ch3 == 'C': return 'right'
+                        if ch3 == 'D': return 'left'
+                        if ch3 == '5':
+                            sys.stdin.read(1)
+                            return 'pgup'
+                        if ch3 == '6':
+                            sys.stdin.read(1)
+                            return 'pgdn'
+                        if ch3 == 'H': return 'home'
+                        if ch3 == 'F': return 'end'
+                    return 'esc'
+                if ch in ('\r', '\n'): return 'enter'
+                if ch == '\t': return 'tab'
+                return ch.lower()
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def _render(self) -> None:
+        """Render the grid view."""
+        self.console.clear()
+        table = self._build_grid()
+        self.console.print(table)
+        self.console.print(
+            "\n[dim]Arrow keys: Navigate | Enter: View cell | "
+            "g/G: Top/Bottom | o: Open in browser | q: Quit[/dim]"
+        )
+
+    def run(self) -> None:
+        """Run the interactive viewer."""
+        if not self.data:
+            self.console.print("[yellow]No data to display[/yellow]")
+            return
+
+        try:
+            while True:
+                self._render()
+                key = self._getch()
+
+                if key in ('q', 'esc'):
+                    break
+                elif key == 'up':
+                    self.cursor_row = max(0, self.cursor_row - 1)
+                elif key == 'down':
+                    self.cursor_row = min(self.max_rows - 1, self.cursor_row + 1)
+                elif key == 'left':
+                    self.cursor_col = max(0, self.cursor_col - 1)
+                elif key == 'right':
+                    self.cursor_col = min(self.max_cols - 1, self.cursor_col + 1)
+                elif key == 'pgup':
+                    self.cursor_row = max(0, self.cursor_row - self.visible_rows)
+                elif key == 'pgdn':
+                    self.cursor_row = min(self.max_rows - 1, self.cursor_row + self.visible_rows)
+                elif key == 'home' or key == 'g':
+                    self.cursor_row = 0
+                    self.cursor_col = 0
+                elif key == 'end' or key == 'G':
+                    self.cursor_row = self.max_rows - 1
+                elif key == 'tab':
+                    # Move to next cell (right, wrap to next row)
+                    self.cursor_col += 1
+                    if self.cursor_col >= self.max_cols:
+                        self.cursor_col = 0
+                        self.cursor_row = min(self.max_rows - 1, self.cursor_row + 1)
+                elif key == 'enter':
+                    self._show_cell_detail()
+                elif key == 'o':
+                    self._open_in_browser()
+
+        except (KeyboardInterrupt, EOFError):
+            pass
+        finally:
+            import os, sys
+            if sys.platform == 'win32':
+                os.system('cls')
+            else:
+                os.system('clear')
+            print("Done.")
+
+
+def view_spreadsheet(
+    data: list[list[Any]],
+    title: str = "Spreadsheet",
+    sheet_url: str = "",
+) -> None:
+    """Launch the interactive spreadsheet viewer.
+
+    Args:
+        data: List of lists representing rows and cells
+        title: Title to display
+        sheet_url: Optional URL to open with 'o' key
+    """
+    viewer = TerminalSheetsViewer(data, title=title, sheet_url=sheet_url)
+    viewer.run()

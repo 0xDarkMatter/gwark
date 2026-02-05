@@ -419,10 +419,28 @@ def _format_sent_markdown(emails: list, year: int, month: int, estimate_time: bo
 @app.command()
 def summarize(
     input_file: Path = typer.Argument(..., help="Input JSON file with emails"),
-    batch_size: int = typer.Option(10, "--batch-size", "-b", help="Emails per API call"),
+    batch_size: int = typer.Option(10, "--batch-size", "-b", help="Emails per batch"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
+    interactive: bool = typer.Option(
+        False, "--interactive", "-i",
+        help="Interactive mode (no API key needed, uses Claude Code session)"
+    ),
+    report: Optional[Path] = typer.Option(
+        None, "--report", "-r", help="Output markdown report path (interactive mode)"
+    ),
 ) -> None:
-    """Summarize emails from a JSON file using AI."""
+    """Summarize emails from a JSON file.
+
+    Default mode uses the Anthropic API (requires ANTHROPIC_API_KEY).
+
+    Interactive mode (--interactive) uses the active Claude Code session
+    to generate summaries without an API key. Perfect for Claude Max users.
+
+    Examples:
+        gwark email summarize emails.json                    # API mode
+        gwark email summarize emails.json --interactive      # No API needed
+        gwark email summarize emails.json -i -b 5 -r report.md
+    """
     import json
 
     print_header("gwark email summarize")
@@ -433,21 +451,76 @@ def summarize(
 
     try:
         with open(input_file, "r", encoding="utf-8") as f:
-            emails = json.load(f)
+            data = json.load(f)
+
+        # Handle different JSON structures
+        if isinstance(data, dict) and 'data' in data:
+            emails = data['data']
+        elif isinstance(data, list):
+            emails = data
+        else:
+            print_error("Invalid JSON format. Expected list or object with 'data' field.")
+            raise typer.Exit(EXIT_ERROR)
 
         print_info(f"Loaded {len(emails)} emails from {input_file}")
 
-        from gmail_mcp.ai import batch_summarize_emails
+        if not emails:
+            print_error("No emails found in file")
+            raise typer.Exit(EXIT_ERROR)
 
-        summarized = batch_summarize_emails(emails, batch_size=batch_size)
+        if interactive:
+            # Interactive batch mode - no API key needed
+            _summarize_interactive(emails, input_file, batch_size, output, report)
+        else:
+            # API mode
+            from gmail_mcp.ai import batch_summarize_emails
 
-        # Save output
-        output_path = output or input_file.with_suffix(".summarized.json")
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(summarized, f, indent=2)
+            summarized = batch_summarize_emails(emails, batch_size=batch_size)
 
-        print_success(f"Saved to: {output_path}")
+            output_path = output or input_file.with_suffix(".summarized.json")
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(summarized, f, indent=2)
+
+            print_success(f"Saved to: {output_path}")
 
     except Exception as e:
         print_error(f"Summarization failed: {e}")
         raise typer.Exit(EXIT_ERROR)
+
+
+def _summarize_interactive(
+    emails: list,
+    input_file: Path,
+    batch_size: int,
+    output: Optional[Path],
+    report: Optional[Path],
+) -> None:
+    """Interactive batch summarization using Claude Code session."""
+    from gwark.core.batch_summarizer import (
+        prepare_batch_for_summary,
+        format_batch_for_claude,
+    )
+
+    batches = prepare_batch_for_summary(emails, batch_size=batch_size)
+    print_info(f"Split into {len(batches)} batches ({batch_size} emails each)")
+
+    console.print("\n[bold yellow]Interactive Batch Summarization[/bold yellow]\n")
+    console.print("[cyan]Emails will be displayed for Claude to summarize.[/cyan]\n")
+
+    # Display all batches for Claude to process
+    for batch_num, batch in enumerate(batches, 1):
+        prompt = format_batch_for_claude(batch, batch_num, len(batches))
+        console.print(prompt)
+        console.print("\n" + "=" * 80 + "\n")
+
+    # Instructions for Claude
+    report_name = report or f"{input_file.stem}_summary_report.md"
+    console.print("\n[bold green]Claude: Please generate summaries for the emails above.[/bold green]")
+    console.print("[yellow]Create a markdown report with:[/yellow]")
+    console.print("  - Date, From, Subject columns")
+    console.print("  - 4-5 line summary for each email")
+    console.print("  - Attachments (filter signature images)")
+    console.print("  - Gmail links")
+    console.print(f"\n[yellow]Save as: [bold]{report_name}[/bold][/yellow]\n")
+
+

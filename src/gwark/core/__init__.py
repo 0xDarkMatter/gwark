@@ -13,6 +13,7 @@ from .docs_analyzer import (
     format_structure_tree,
 )
 from .docs_comments import DocsCommentManager
+from .async_utils import AsyncFetcher, SyncRateLimiter, run_async, parallel_map
 
 __all__ = [
     "load_config",
@@ -31,4 +32,8 @@ __all__ = [
     "format_structure_table",
     "format_structure_tree",
     "DocsCommentManager",
+    "AsyncFetcher",
+    "SyncRateLimiter",
+    "run_async",
+    "parallel_map",
 ]

@@ -1101,21 +1101,23 @@ def theme(
                         })
 
                     # Apply text formatting
-                    text_style = theme_style.to_text_style().to_docs_api()
-                    if text_style:
-                        fields = []
-                        for key in text_style:
-                            if isinstance(text_style[key], dict):
-                                fields.append(key)
-                            else:
-                                fields.append(key)
-                        requests.append({
-                            "updateTextStyle": {
-                                "range": {"startIndex": start_idx, "endIndex": end_idx},
-                                "textStyle": text_style,
-                                "fields": ",".join(fields),
-                            }
-                        })
+                    # Skip text styles for NORMAL_TEXT to preserve inline bold/italic
+                    if named_style != "NORMAL_TEXT":
+                        text_style = theme_style.to_text_style().to_docs_api()
+                        if text_style:
+                            fields = []
+                            for key in text_style:
+                                if isinstance(text_style[key], dict):
+                                    fields.append(key)
+                                else:
+                                    fields.append(key)
+                            requests.append({
+                                "updateTextStyle": {
+                                    "range": {"startIndex": start_idx, "endIndex": end_idx},
+                                    "textStyle": text_style,
+                                    "fields": ",".join(fields),
+                                }
+                            })
 
             if requests:
                 service.documents().batchUpdate(
