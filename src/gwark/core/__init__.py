@@ -13,7 +13,14 @@ from .docs_analyzer import (
     format_structure_tree,
 )
 from .docs_comments import DocsCommentManager
-from .async_utils import AsyncFetcher, SyncRateLimiter, run_async, parallel_map
+from .async_utils import (
+    AsyncFetcher,
+    SyncRateLimiter,
+    run_async,
+    parallel_map,
+    retry_with_backoff,
+    async_retry_with_backoff,
+)
 
 __all__ = [
     "load_config",
@@ -36,4 +43,6 @@ __all__ = [
     "SyncRateLimiter",
     "run_async",
     "parallel_map",
+    "retry_with_backoff",
+    "async_retry_with_backoff",
 ]
