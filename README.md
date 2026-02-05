@@ -79,7 +79,9 @@ gwark
 │   ├── create      Create new spreadsheet
 │   ├── append      Append rows to sheet
 │   ├── clear       Clear cells in range
-│   └── export      Export as CSV/JSON
+│   ├── export      Export as CSV/JSON
+│   ├── pivot       Create pivot table with auto-styling
+│   └── resize      Adjust column widths
 └── config
     ├── init        Initialize .gwark/ directory
     ├── show        Display configuration
@@ -273,7 +275,26 @@ gwark sheets clear SHEET_ID "Sheet1!A10:D20" --confirm
 # Export
 gwark sheets export SHEET_ID --format csv
 gwark sheets export SHEET_ID --sheet "Summary" -o summary.csv
+
+# Pivot tables (auto-styled with Roboto, light blue header, gray totals)
+gwark sheets pivot SHEET_ID -s "Data!A1:E100" -r "Category" -v "sum:Sales"
+gwark sheets pivot SHEET_ID -s "Sales!A:D" -r "Region,Product" -c "Month" -v "sum:Revenue,avg:Profit"
+
+# Resize columns
+gwark sheets resize SHEET_ID -s "Pivot" -w "130,160,150,420,100"
+gwark sheets resize SHEET_ID -s "Data" --auto   # Auto-fit content
 ```
+
+**Pivot table options:**
+| Option | Description |
+|--------|-------------|
+| `-s, --source` | Source data range (e.g., `Data!A1:E100`) |
+| `-t, --target` | Target cell for pivot (default: `Sheet1!F1`) |
+| `-r, --rows` | Row groupings (comma-separated column names) |
+| `-c, --cols` | Column groupings (optional) |
+| `-v, --values` | Aggregations: `sum:Sales`, `avg:Profit`, `count:ID` |
+
+**Aggregation functions:** SUM, COUNT, AVERAGE, MAX, MIN, COUNTUNIQUE, MEDIAN, STDEV
 
 **Interactive grid viewer** (`-i` flag):
 | Key | Action |
@@ -432,11 +453,11 @@ uvx ruff check src/ tests/
 
 ## Roadmap
 
-- [x] Interactive terminal viewers for email, calendar, drive
-- [x] Parallel email fetching (50 threads)
+- [x] Interactive terminal viewers for email, calendar, drive, sheets
+- [x] Parallel fetching (email 50 threads, calendar multi-calendar, sheets batch)
+- [x] Google Sheets with pivot tables and auto-styling
 - [ ] MCP Server for Claude Desktop integration
 - [ ] Summary caching to avoid re-processing
-- [ ] Retry logic with exponential backoff
 - [ ] Multi-account support
 
 ## License
