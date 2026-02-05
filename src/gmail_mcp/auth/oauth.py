@@ -241,3 +241,24 @@ def get_sheets_client() -> Any:
     import gspread
     creds = get_sheets_credentials()
     return gspread.authorize(creds)
+
+
+def get_slides_service() -> Any:
+    """Get authenticated Google Slides API service.
+
+    Convenience wrapper for Slides API access.
+    Supports full read/write access to presentations.
+
+    Returns:
+        Authenticated Slides API v1 service
+
+    Example:
+        >>> service = get_slides_service()
+        >>> presentation = service.presentations().get(
+        ...     presentationId='PRESENTATION_ID').execute()
+        >>> print(presentation['title'])
+    """
+    scopes: List[str] = [
+        'https://www.googleapis.com/auth/presentations',  # Full read/write
+    ]
+    return get_google_service('slides', 'v1', scopes, 'slides_token.pickle')

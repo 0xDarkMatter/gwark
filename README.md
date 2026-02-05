@@ -84,6 +84,13 @@ gwark
 │   ├── export      Export as CSV/JSON
 │   ├── pivot       Create pivot table with auto-styling
 │   └── resize      Adjust column widths
+├── slides
+│   ├── list        List presentations (-i for interactive)
+│   ├── get         Get presentation structure (-i for viewer)
+│   ├── create      Create from markdown or template
+│   ├── add-slide   Add slide to presentation
+│   ├── edit        Delete, move, or replace text
+│   └── export      Export as markdown/JSON
 └── config
     ├── init        Initialize .gwark/ directory
     ├── show        Display configuration
@@ -307,6 +314,64 @@ gwark sheets resize SHEET_ID -s "Data" --auto   # Auto-fit content
 | `o` | Open in Google Sheets |
 | `q` | Quit |
 
+### Slides
+
+```bash
+# List all presentations (most recent first)
+gwark slides list
+gwark slides list -i                        # Interactive browser
+
+# Get presentation structure
+gwark slides get PRES_ID                    # Markdown outline
+gwark slides get PRES_ID -f json            # Full JSON structure
+gwark slides get PRES_ID -i                 # Interactive viewer
+
+# Create presentation
+gwark slides create "My Deck" --open        # Empty, opens in browser
+gwark slides create "Report" --file slides.md
+gwark slides create "Q1 Review" --template TEMPLATE_ID
+
+# Pipe from Claude Code
+claude "Create Q1 planning outline as markdown" | gwark slides create "Q1 Plan" -f -
+
+# Add slides
+gwark slides add-slide PRES_ID --title "New Slide"
+gwark slides add-slide PRES_ID --layout BLANK --position 2
+
+# Edit operations
+gwark slides edit PRES_ID --delete-slide 3
+gwark slides edit PRES_ID --move-slide "5:2"
+gwark slides edit PRES_ID --replace "2024::2025"
+
+# Export
+gwark slides export PRES_ID -f markdown -o presentation.md
+gwark slides export PRES_ID -f json
+```
+
+**Markdown format for slides:**
+```markdown
+# Slide Title
+- Bullet point 1
+- Bullet point 2
+
+## Speaker Notes
+Hidden notes for presenter.
+
+---
+
+# Next Slide
+More content here.
+```
+
+**Interactive viewer** (`-i` flag):
+| Key | Action |
+|-----|--------|
+| `↑↓` | Navigate slides |
+| `n` | Toggle speaker notes |
+| `o` | Open in Google Slides |
+| `g/G` | Go to top/bottom |
+| `q` | Quit |
+
 #### Comment Management
 
 Manage comments on Google Docs (list, reply, resolve):
@@ -388,7 +453,7 @@ filters:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select existing
-3. Enable APIs: Gmail, Calendar, Drive, Forms, Docs, **Sheets**
+3. Enable APIs: Gmail, Calendar, Drive, Forms, Docs, Sheets, **Slides**
 4. Create OAuth2 credentials (Desktop App)
 5. Download credentials JSON
 6. Save as `.gwark/credentials/oauth2_credentials.json`
