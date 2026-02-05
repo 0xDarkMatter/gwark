@@ -1,17 +1,146 @@
 """Async utilities for parallel fetching with rate limiting.
 
 Provides bounded parallel execution for Google API calls with
-rate limiting to respect API quotas.
+rate limiting to respect API quotas, plus exponential backoff
+retry logic for transient errors.
 """
 
 import asyncio
-from typing import TypeVar, Callable, List, Any, Optional
+import random
+from typing import TypeVar, Callable, List, Any, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 import time
 
 
 T = TypeVar('T')
 R = TypeVar('R')
+
+# HTTP status codes that should trigger retry
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def retry_with_backoff(
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 60.0,
+    exponential_base: float = 2.0,
+    jitter: bool = True,
+):
+    """Decorator for retrying functions with exponential backoff.
+
+    Args:
+        max_retries: Maximum retry attempts (default: 3)
+        base_delay: Initial delay in seconds (default: 1.0)
+        max_delay: Maximum delay cap in seconds (default: 60.0)
+        exponential_base: Base for exponential calculation (default: 2.0)
+        jitter: Add random jitter to prevent thundering herd (default: True)
+
+    Example:
+        @retry_with_backoff(max_retries=3)
+        def api_call():
+            return requests.get(url)
+    """
+    def decorator(func: Callable[..., R]) -> Callable[..., R]:
+        def wrapper(*args, **kwargs) -> R:
+            last_exception = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+
+                    # Check if retryable
+                    status = _get_error_status(e)
+                    if status not in RETRYABLE_STATUS_CODES:
+                        raise  # Non-retryable error
+
+                    if attempt < max_retries:
+                        delay = min(base_delay * (exponential_base ** attempt), max_delay)
+                        if jitter:
+                            delay = delay * (0.5 + random.random())  # 50-150% of delay
+                        time.sleep(delay)
+
+            raise last_exception
+
+        return wrapper
+    return decorator
+
+
+async def async_retry_with_backoff(
+    func: Callable[..., R],
+    *args,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 60.0,
+    exponential_base: float = 2.0,
+    jitter: bool = True,
+    **kwargs,
+) -> R:
+    """Async function with exponential backoff retry.
+
+    Args:
+        func: Sync function to call (will be run in thread)
+        *args: Arguments to pass to func
+        max_retries: Maximum retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay cap
+        exponential_base: Base for exponential calculation
+        jitter: Add random jitter
+        **kwargs: Keyword arguments to pass to func
+
+    Returns:
+        Result from func
+
+    Example:
+        result = await async_retry_with_backoff(
+            api_call, arg1, arg2,
+            max_retries=3
+        )
+    """
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await asyncio.to_thread(func, *args, **kwargs)
+        except Exception as e:
+            last_exception = e
+
+            # Check if retryable
+            status = _get_error_status(e)
+            if status not in RETRYABLE_STATUS_CODES:
+                raise  # Non-retryable error
+
+            if attempt < max_retries:
+                delay = min(base_delay * (exponential_base ** attempt), max_delay)
+                if jitter:
+                    delay = delay * (0.5 + random.random())
+                await asyncio.sleep(delay)
+
+    raise last_exception
+
+
+def _get_error_status(error: Exception) -> int:
+    """Extract HTTP status code from various error types."""
+    # Google API errors
+    if hasattr(error, 'resp') and hasattr(error.resp, 'status'):
+        return error.resp.status
+
+    # gspread errors
+    if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+        return error.response.status_code
+
+    # requests errors
+    if hasattr(error, 'status_code'):
+        return error.status_code
+
+    # Check error message for status code
+    error_str = str(error)
+    for code in RETRYABLE_STATUS_CODES:
+        if str(code) in error_str:
+            return code
+
+    return 0  # Unknown, don't retry
 
 
 class SyncRateLimiter:
@@ -47,10 +176,11 @@ class SyncRateLimiter:
 
 
 class AsyncFetcher:
-    """Bounded parallel fetching with rate limiting.
+    """Bounded parallel fetching with rate limiting and retry.
 
     Executes synchronous functions in parallel using asyncio.to_thread(),
-    with semaphore-based concurrency control and rate limiting.
+    with semaphore-based concurrency control, rate limiting, and
+    exponential backoff retry for transient errors (429, 5xx).
 
     Example:
         fetcher = AsyncFetcher(max_concurrent=10, rate_per_second=50)
@@ -68,23 +198,32 @@ class AsyncFetcher:
         self,
         max_concurrent: int = 10,
         rate_per_second: float = 50,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        max_delay: float = 60.0,
     ):
         """Initialize fetcher.
 
         Args:
             max_concurrent: Maximum concurrent operations (default: 10)
             rate_per_second: Maximum requests per second (default: 50)
+            max_retries: Maximum retry attempts for transient errors (default: 3)
+            base_delay: Initial retry delay in seconds (default: 1.0)
+            max_delay: Maximum retry delay cap (default: 60.0)
         """
         self.max_concurrent = max_concurrent
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.rate_limiter = SyncRateLimiter(rate_per_second)
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        self.max_delay = max_delay
 
     async def fetch_one(
         self,
         item: T,
         fetch_func: Callable[[T], R],
     ) -> R:
-        """Fetch a single item with rate limiting.
+        """Fetch a single item with rate limiting and retry.
 
         Args:
             item: Item to process
@@ -95,7 +234,28 @@ class AsyncFetcher:
         """
         async with self.semaphore:
             await self.rate_limiter.acquire()
-            return await asyncio.to_thread(fetch_func, item)
+
+            last_exception = None
+            for attempt in range(self.max_retries + 1):
+                try:
+                    return await asyncio.to_thread(fetch_func, item)
+                except Exception as e:
+                    last_exception = e
+                    status = _get_error_status(e)
+
+                    if status not in RETRYABLE_STATUS_CODES:
+                        raise  # Non-retryable
+
+                    if attempt < self.max_retries:
+                        delay = min(
+                            self.base_delay * (2 ** attempt),
+                            self.max_delay
+                        )
+                        # Add jitter
+                        delay = delay * (0.5 + random.random())
+                        await asyncio.sleep(delay)
+
+            raise last_exception
 
     async def fetch_all(
         self,
