@@ -4,7 +4,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Callable, TypeVar
+from typing import Optional, Callable, TypeVar, List, Dict, Any
 
 import typer
 from rich.console import Console
@@ -23,6 +23,7 @@ from gwark.core.output import (
     print_warning,
     print_header,
 )
+from gwark.core.async_utils import AsyncFetcher, run_async
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
@@ -62,6 +63,103 @@ def _retry_api_call(
 
     # All retries exhausted
     raise last_error
+
+
+def _fetch_calendar_events_paginated(
+    service,
+    cal_id: str,
+    time_min: str,
+    time_max: str,
+    max_results: int = 500,
+) -> List[Dict[str, Any]]:
+    """Fetch all events from a calendar with pagination.
+
+    Args:
+        service: Google Calendar service
+        cal_id: Calendar ID
+        time_min: Start time (ISO format)
+        time_max: End time (ISO format)
+        max_results: Maximum total events to fetch
+
+    Returns:
+        List of event dictionaries
+    """
+    all_events = []
+    page_token = None
+
+    while len(all_events) < max_results:
+        # Fetch page (max 250 per request is optimal)
+        result = _retry_api_call(
+            lambda: service.events().list(
+                calendarId=cal_id,
+                timeMin=time_min,
+                timeMax=time_max,
+                maxResults=min(250, max_results - len(all_events)),
+                singleEvents=True,
+                orderBy="startTime",
+                pageToken=page_token,
+            ).execute(),
+            operation=f"Fetch events from {cal_id}"
+        )
+
+        events = result.get("items", [])
+        # Tag each event with source calendar
+        for event in events:
+            event["_calendar_id"] = cal_id
+        all_events.extend(events)
+
+        page_token = result.get("nextPageToken")
+        if not page_token:
+            break
+
+    return all_events[:max_results]
+
+
+async def _fetch_all_calendars_async(
+    service,
+    calendar_ids: List[str],
+    time_min: str,
+    time_max: str,
+    max_results: int,
+    calendar_meta: Dict[str, Dict],
+) -> List[Dict[str, Any]]:
+    """Fetch events from all calendars in parallel.
+
+    Args:
+        service: Google Calendar service
+        calendar_ids: List of calendar IDs to fetch
+        time_min: Start time (ISO format)
+        time_max: End time (ISO format)
+        max_results: Max events per calendar
+        calendar_meta: Calendar metadata for naming
+
+    Returns:
+        Combined list of events from all calendars
+    """
+    fetcher = AsyncFetcher(max_concurrent=10, rate_per_second=50)
+
+    def fetch_calendar(cal_id: str) -> List[Dict[str, Any]]:
+        """Fetch events from a single calendar (sync)."""
+        return _fetch_calendar_events_paginated(
+            service, cal_id, time_min, time_max, max_results
+        )
+
+    # Fetch all calendars in parallel
+    results = await fetcher.fetch_all(calendar_ids, fetch_calendar)
+
+    # Flatten and filter errors
+    all_events = []
+    for i, result in enumerate(results):
+        cal_id = calendar_ids[i]
+        cal_name = calendar_meta.get(cal_id, {}).get('name', cal_id)
+
+        if isinstance(result, Exception):
+            print_error(f"  Failed to fetch {cal_name}: {result}")
+        else:
+            print_info(f"  {cal_name}: {len(result)} events")
+            all_events.extend(result)
+
+    return all_events
 
 
 def _extract_meet_link(conference_data: dict | None) -> str:
@@ -198,30 +296,20 @@ def meetings(
 
         print_info(f"Fetching events from {time_min[:10]} to {time_max[:10]}...")
 
-        # Fetch events from each calendar
-        all_events = []
-        for cal_id in calendar_ids:
-            cal_name = calendar_meta.get(cal_id, {}).get('name', cal_id)
-            try:
-                events_result = _retry_api_call(
-                    lambda cid=cal_id: service.events().list(
-                        calendarId=cid,
-                        timeMin=time_min,
-                        timeMax=time_max,
-                        maxResults=max_results,
-                        singleEvents=True,
-                        orderBy="startTime",
-                    ).execute(),
-                    operation=f"Fetch events from {cal_name}"
-                )
-
-                # Tag each event with its source calendar
-                for event in events_result.get("items", []):
-                    event["_calendar_id"] = cal_id
-                all_events.extend(events_result.get("items", []))
-                print_info(f"  {cal_name}: {len(events_result.get('items', []))} events")
-            except Exception as e:
-                print_error(f"  Failed to fetch {cal_name}: {e}")
+        # Fetch events from all calendars in parallel with pagination
+        if len(calendar_ids) == 1:
+            # Single calendar - no need for async overhead
+            all_events = _fetch_calendar_events_paginated(
+                service, calendar_ids[0], time_min, time_max, max_results
+            )
+            cal_name = calendar_meta.get(calendar_ids[0], {}).get('name', calendar_ids[0])
+            print_info(f"  {cal_name}: {len(all_events)} events")
+        else:
+            # Multiple calendars - fetch in parallel
+            print_info(f"Fetching from {len(calendar_ids)} calendars in parallel...")
+            all_events = run_async(_fetch_all_calendars_async(
+                service, calendar_ids, time_min, time_max, max_results, calendar_meta
+            ))
 
         print_info(f"Found {len(all_events)} total events")
 
