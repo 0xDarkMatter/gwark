@@ -91,7 +91,24 @@ def get_google_service(
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             print("[INFO] Refreshing credentials...")
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "revoked" in error_msg or "invalid_grant" in error_msg:
+                    print(f"[ERROR] Token has been revoked or expired permanently.")
+                    print(f"  Delete the token file and re-authenticate:")
+                    print(f"  {token_path}")
+                    print(f"  Then run: gwark config auth setup")
+                    sys.exit(2)
+                elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+                    print(f"[ERROR] Network error refreshing credentials: {e}")
+                    print(f"  Check your internet connection and try again.")
+                    sys.exit(1)
+                else:
+                    print(f"[ERROR] Failed to refresh credentials: {e}")
+                    print(f"  Try deleting {token_path} and re-authenticating.")
+                    sys.exit(2)
         else:
             if not creds_path.exists():
                 print(f"[ERROR] OAuth2 credentials not found at {creds_path}")
@@ -239,7 +256,24 @@ def get_sheets_credentials() -> Credentials:
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             print("[INFO] Refreshing Sheets credentials...")
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "revoked" in error_msg or "invalid_grant" in error_msg:
+                    print(f"[ERROR] Sheets token has been revoked or expired permanently.")
+                    print(f"  Delete the token file and re-authenticate:")
+                    print(f"  {token_path}")
+                    print(f"  Then run: gwark config auth setup")
+                    sys.exit(2)
+                elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+                    print(f"[ERROR] Network error refreshing Sheets credentials: {e}")
+                    print(f"  Check your internet connection and try again.")
+                    sys.exit(1)
+                else:
+                    print(f"[ERROR] Failed to refresh Sheets credentials: {e}")
+                    print(f"  Try deleting {token_path} and re-authenticating.")
+                    sys.exit(2)
         else:
             if not creds_path.exists():
                 print(f"[ERROR] OAuth2 credentials not found at {creds_path}")

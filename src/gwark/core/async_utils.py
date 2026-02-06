@@ -6,6 +6,7 @@ retry logic for transient errors.
 """
 
 import asyncio
+import os
 import random
 from typing import TypeVar, Callable, List, Any, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
@@ -141,6 +142,71 @@ def _get_error_status(error: Exception) -> int:
             return code
 
     return 0  # Unknown, don't retry
+
+
+def retry_execute(
+    request,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    operation: str = "API call",
+):
+    """Execute a Google API request with retry for transient errors.
+
+    Wraps the common pattern: service.resource().method(...).execute()
+    with exponential backoff retry for 429/5xx errors.
+
+    Args:
+        request: Google API request object (result of .method() call)
+        max_retries: Maximum retry attempts (default: 3)
+        base_delay: Initial delay in seconds (default: 1.0)
+        operation: Description for retry warning messages
+
+    Returns:
+        API response dict
+
+    Example:
+        result = retry_execute(
+            service.files().list(q=query, pageSize=100),
+            operation="List Drive files"
+        )
+    """
+    from gwark.core.output import print_warning
+
+    last_exception = None
+    for attempt in range(max_retries + 1):
+        try:
+            return request.execute()
+        except Exception as e:
+            last_exception = e
+            status = _get_error_status(e)
+            if status not in RETRYABLE_STATUS_CODES:
+                raise
+
+            if attempt < max_retries:
+                delay = min(base_delay * (2 ** attempt), 60.0)
+                delay = delay * (0.5 + random.random())
+                print_warning(
+                    f"{operation} failed ({status}), retrying in {delay:.1f}s... "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+
+    raise last_exception
+
+
+def check_anthropic_key() -> bool:
+    """Check if ANTHROPIC_API_KEY is set before AI operations.
+
+    Returns True if key is available, False with user-friendly warning if missing.
+    """
+    from gwark.core.output import print_warning
+
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        print_warning("ANTHROPIC_API_KEY not set. AI features will be skipped.")
+        print_warning("Set it with: export ANTHROPIC_API_KEY=sk-ant-...")
+        return False
+    return True
 
 
 class SyncRateLimiter:

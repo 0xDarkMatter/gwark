@@ -1,10 +1,9 @@
 """Calendar commands for gwark CLI."""
 
 import sys
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Callable, TypeVar, List, Dict, Any
+from typing import Optional, List, Dict, Any
 
 import typer
 from rich.console import Console
@@ -23,46 +22,10 @@ from gwark.core.output import (
     print_warning,
     print_header,
 )
-from gwark.core.async_utils import AsyncFetcher, run_async
+from gwark.core.async_utils import AsyncFetcher, run_async, retry_execute
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
-
-T = TypeVar("T")
-
-
-def _retry_api_call(
-    func: Callable[[], T],
-    max_retries: int = 3,
-    base_delay: float = 1.0,
-    operation: str = "API call",
-) -> T:
-    """Retry API call with exponential backoff for transient errors."""
-    from googleapiclient.errors import HttpError
-
-    last_error = None
-    for attempt in range(max_retries):
-        try:
-            return func()
-        except HttpError as e:
-            last_error = e
-            status = e.resp.status if hasattr(e, 'resp') else 0
-
-            # Retry on 5xx (server errors) and 429 (rate limit)
-            if status in (429, 500, 502, 503, 504):
-                delay = base_delay * (2 ** attempt)
-                if attempt < max_retries - 1:
-                    print_warning(f"{operation} failed ({status}), retrying in {delay:.1f}s...")
-                    time.sleep(delay)
-                    continue
-            # Non-retryable error
-            raise
-        except Exception as e:
-            # Non-HTTP errors, don't retry
-            raise
-
-    # All retries exhausted
-    raise last_error
 
 
 def _fetch_calendar_events_paginated(
@@ -89,8 +52,8 @@ def _fetch_calendar_events_paginated(
 
     while len(all_events) < max_results:
         # Fetch page (max 250 per request is optimal)
-        result = _retry_api_call(
-            lambda: service.events().list(
+        result = retry_execute(
+            service.events().list(
                 calendarId=cal_id,
                 timeMin=time_min,
                 timeMax=time_max,
@@ -98,8 +61,8 @@ def _fetch_calendar_events_paginated(
                 singleEvents=True,
                 orderBy="startTime",
                 pageToken=page_token,
-            ).execute(),
-            operation=f"Fetch events from {cal_id}"
+            ),
+            operation=f"Fetch events from {cal_id}",
         )
 
         events = result.get("items", [])
@@ -184,11 +147,11 @@ def list_calendars() -> None:
         service = get_calendar_service()
 
         print_info("Fetching calendars...")
-        calendar_list = _retry_api_call(
-            lambda: service.calendarList().list(
+        calendar_list = retry_execute(
+            service.calendarList().list(
                 fields="items(id,summary,backgroundColor,primary,accessRole)"
-            ).execute(),
-            operation="Fetch calendar list"
+            ),
+            operation="Fetch calendar list",
         )
 
         calendars = calendar_list.get("items", [])
@@ -265,11 +228,11 @@ def meetings(
 
         # Fetch calendar metadata (names, colors) for all accessible calendars
         print_info("Fetching calendar metadata...")
-        calendar_list = _retry_api_call(
-            lambda: service.calendarList().list(
+        calendar_list = retry_execute(
+            service.calendarList().list(
                 fields="items(id,summary,backgroundColor,foregroundColor,primary)"
-            ).execute(),
-            operation="Fetch calendar list"
+            ),
+            operation="Fetch calendar list",
         )
 
         # Build color map: {calendar_id: {"name": "Personal", "bg": "#9fe1e7", ...}}

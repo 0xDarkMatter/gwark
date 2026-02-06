@@ -108,10 +108,10 @@ gwark sheets
 
 ## Pending (v0.3.x)
 
-### Error Handling & Resilience
-- [ ] Add retry logic with exponential backoff for rate limits (429)
-- [ ] Graceful degradation when AI API key is missing
-- [ ] Better error messages for OAuth failures
+### Error Handling & Resilience ✅
+- [x] Add retry logic with exponential backoff for rate limits (429)
+- [x] Graceful degradation when AI API key is missing
+- [x] Better error messages for OAuth failures
 
 ### Testing
 - [ ] Basic unit tests for config loading

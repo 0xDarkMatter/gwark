@@ -36,6 +36,7 @@ from gwark.core.docs_analyzer import (
     format_structure_tree,
 )
 from gwark.schemas.themes import DocTheme, get_default_theme
+from gwark.core.async_utils import retry_execute
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
@@ -257,7 +258,10 @@ def _build_move_section_requests(
         raise ValueError("Cannot move section to its current position")
 
     # Get the raw document content
-    doc = docs_service.documents().get(documentId=doc_id).execute()
+    doc = retry_execute(
+        docs_service.documents().get(documentId=doc_id),
+        operation="Get document",
+    )
     body = doc.get("body", {})
     content = body.get("content", [])
 
@@ -441,10 +445,13 @@ def create(
             if folder:
                 copy_body["parents"] = [folder]
 
-            copied = drive_service.files().copy(
-                fileId=template_id,
-                body=copy_body,
-            ).execute()
+            copied = retry_execute(
+                drive_service.files().copy(
+                    fileId=template_id,
+                    body=copy_body,
+                ),
+                operation="Copy template",
+            )
 
             doc_id = copied["id"]
             print_success(f"Document created from template: {doc_id}")
@@ -452,17 +459,23 @@ def create(
         else:
             # Create empty document
             doc_body = {"title": title}
-            doc = docs_service.documents().create(body=doc_body).execute()
+            doc = retry_execute(
+                docs_service.documents().create(body=doc_body),
+                operation="Create document",
+            )
             doc_id = doc["documentId"]
             print_info(f"Created document: {doc_id}")
 
             # Move to folder if specified
             if folder:
-                drive_service.files().update(
-                    fileId=doc_id,
-                    addParents=folder,
-                    removeParents="root",
-                ).execute()
+                retry_execute(
+                    drive_service.files().update(
+                        fileId=doc_id,
+                        addParents=folder,
+                        removeParents="root",
+                    ),
+                    operation="Move document to folder",
+                )
                 print_info(f"Moved to folder: {folder}")
 
         # Read content
@@ -481,10 +494,13 @@ def create(
 
             if requests:
                 print_info(f"Applying {len(requests)} formatting requests...")
-                docs_service.documents().batchUpdate(
-                    documentId=doc_id,
-                    body={"requests": requests}
-                ).execute()
+                retry_execute(
+                    docs_service.documents().batchUpdate(
+                        documentId=doc_id,
+                        body={"requests": requests}
+                    ),
+                    operation="Apply content",
+                )
                 print_success("Content and formatting applied")
 
         # Output
@@ -531,7 +547,10 @@ def get(
         from gmail_mcp.auth import get_docs_service
 
         service = get_docs_service()
-        doc = service.documents().get(documentId=doc_id).execute()
+        doc = retry_execute(
+            service.documents().get(documentId=doc_id),
+            operation="Get document",
+        )
 
         doc_title = doc.get("title", "Untitled")
         print_success(f"Retrieved: {doc_title}")
@@ -643,7 +662,10 @@ def edit(
         service = get_docs_service()
 
         # Get current document
-        doc = service.documents().get(documentId=doc_id).execute()
+        doc = retry_execute(
+            service.documents().get(documentId=doc_id),
+            operation="Get document",
+        )
         doc_title = doc.get("title", "Untitled")
         print_info(f"Document: {doc_title}")
 
@@ -794,10 +816,13 @@ def edit(
                     text = req["insertText"]["text"]
                     insert_ranges.append((loc, loc + len(text)))
 
-            service.documents().batchUpdate(
-                documentId=doc_id,
-                body={"requests": requests}
-            ).execute()
+            retry_execute(
+                service.documents().batchUpdate(
+                    documentId=doc_id,
+                    body={"requests": requests}
+                ),
+                operation="Apply edits",
+            )
             print_success(f"Applied {len(requests)} changes")
 
             # Apply highlighting to inserted content
@@ -908,7 +933,10 @@ def sections(
         from gmail_mcp.auth import get_docs_service
 
         service = get_docs_service()
-        doc = service.documents().get(documentId=doc_id).execute()
+        doc = retry_execute(
+            service.documents().get(documentId=doc_id),
+            operation="Get document",
+        )
 
         doc_title = doc.get("title", "Untitled")
         print_success(f"Document: {doc_title}")
@@ -1054,7 +1082,10 @@ def theme(
             service = get_docs_service()
 
             # Get document content
-            doc = service.documents().get(documentId=doc_id).execute()
+            doc = retry_execute(
+                service.documents().get(documentId=doc_id),
+                operation="Get document",
+            )
             body_content = doc.get("body", {}).get("content", [])
 
             requests = []
@@ -1120,10 +1151,13 @@ def theme(
                             })
 
             if requests:
-                service.documents().batchUpdate(
-                    documentId=doc_id,
-                    body={"requests": requests}
-                ).execute()
+                retry_execute(
+                    service.documents().batchUpdate(
+                        documentId=doc_id,
+                        body={"requests": requests}
+                    ),
+                    operation="Apply theme",
+                )
                 print_success(f"Applied {len(requests)} style updates")
             else:
                 print_warning("No styles to apply")
@@ -1168,7 +1202,10 @@ def summarize(
         service = get_docs_service()
 
         # Get document content
-        doc = service.documents().get(documentId=doc_id).execute()
+        doc = retry_execute(
+            service.documents().get(documentId=doc_id),
+            operation="Get document",
+        )
         doc_title = doc.get("title", "Untitled")
         print_info(f"Document: {doc_title}")
 
@@ -1403,12 +1440,15 @@ def list_docs(
 
         drive_query = " and ".join(query_parts)
 
-        results = drive.files().list(
-            q=drive_query,
-            fields="files(id, name, createdTime, modifiedTime, owners, webViewLink)",
-            pageSize=max_results,
-            orderBy="modifiedTime desc",
-        ).execute()
+        results = retry_execute(
+            drive.files().list(
+                q=drive_query,
+                fields="files(id, name, createdTime, modifiedTime, owners, webViewLink)",
+                pageSize=max_results,
+                orderBy="modifiedTime desc",
+            ),
+            operation="List documents",
+        )
 
         docs = results.get('files', [])
         print_info(f"Found {len(docs)} documents")
@@ -1829,7 +1869,10 @@ def apply(
         print_info("Applying changes to document...")
 
         # Get document to find text positions
-        doc = docs_service.documents().get(documentId=doc_id).execute()
+        doc = retry_execute(
+            docs_service.documents().get(documentId=doc_id),
+            operation="Get document",
+        )
 
         # Prepare batch updates (process in reverse to maintain positions)
         requests = []
@@ -1895,10 +1938,13 @@ def apply(
 
         # Execute batch update
         if requests:
-            docs_service.documents().batchUpdate(
-                documentId=doc_id,
-                body={'requests': requests}
-            ).execute()
+            retry_execute(
+                docs_service.documents().batchUpdate(
+                    documentId=doc_id,
+                    body={'requests': requests}
+                ),
+                operation="Apply changes",
+            )
 
             print_success(f"Applied {len(requests) // 2} change(s) to document")
 

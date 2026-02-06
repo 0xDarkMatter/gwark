@@ -14,6 +14,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from gwark.core.async_utils import retry_execute
+
 
 @dataclass
 class SlideElement:
@@ -153,13 +155,16 @@ class SlidesClient:
             if query:
                 q += f" and name contains '{query}'"
 
-            response = self.drive.files().list(
-                q=q,
-                pageSize=min(100, max_results - len(results)),
-                pageToken=page_token,
-                fields="nextPageToken, files(id, name, createdTime, modifiedTime)",
-                orderBy="modifiedTime desc",
-            ).execute()
+            response = retry_execute(
+                self.drive.files().list(
+                    q=q,
+                    pageSize=min(100, max_results - len(results)),
+                    pageToken=page_token,
+                    fields="nextPageToken, files(id, name, createdTime, modifiedTime)",
+                    orderBy="modifiedTime desc",
+                ),
+                operation="List presentations",
+            )
 
             files = response.get("files", [])
             results.extend(files)
@@ -192,9 +197,12 @@ class SlidesClient:
             Full presentation resource from API
         """
         presentation_id = self._extract_id(presentation_id)
-        return self.slides.presentations().get(
-            presentationId=presentation_id
-        ).execute()
+        return retry_execute(
+            self.slides.presentations().get(
+                presentationId=presentation_id
+            ),
+            operation="Get presentation",
+        )
 
     def get_presentation_structure(
         self,
@@ -355,7 +363,10 @@ class SlidesClient:
             Created presentation resource with id, url, etc.
         """
         body = {"title": title}
-        presentation = self.slides.presentations().create(body=body).execute()
+        presentation = retry_execute(
+            self.slides.presentations().create(body=body),
+            operation="Create presentation",
+        )
         return {
             "id": presentation.get("presentationId"),
             "title": presentation.get("title"),
@@ -386,10 +397,13 @@ class SlidesClient:
         if folder_id:
             body["parents"] = [folder_id]
 
-        copied = self.drive.files().copy(
-            fileId=template_id,
-            body=body,
-        ).execute()
+        copied = retry_execute(
+            self.drive.files().copy(
+                fileId=template_id,
+                body=body,
+            ),
+            operation="Copy template",
+        )
 
         return {
             "id": copied.get("id"),
@@ -431,10 +445,13 @@ class SlidesClient:
         if position is not None:
             request["createSlide"]["insertionIndex"] = position
 
-        self.slides.presentations().batchUpdate(
-            presentationId=presentation_id,
-            body={"requests": [request]}
-        ).execute()
+        retry_execute(
+            self.slides.presentations().batchUpdate(
+                presentationId=presentation_id,
+                body={"requests": [request]}
+            ),
+            operation="Add slide",
+        )
 
         return slide_id
 
@@ -457,10 +474,13 @@ class SlidesClient:
             batchUpdate response
         """
         presentation_id = self._extract_id(presentation_id)
-        return self.slides.presentations().batchUpdate(
-            presentationId=presentation_id,
-            body={"requests": requests}
-        ).execute()
+        return retry_execute(
+            self.slides.presentations().batchUpdate(
+                presentationId=presentation_id,
+                body={"requests": requests}
+            ),
+            operation="Batch update presentation",
+        )
 
     def insert_text(
         self,
@@ -592,10 +612,13 @@ class SlidesClient:
             PDF file content as bytes
         """
         presentation_id = self._extract_id(presentation_id)
-        return self.drive.files().export(
-            fileId=presentation_id,
-            mimeType="application/pdf"
-        ).execute()
+        return retry_execute(
+            self.drive.files().export(
+                fileId=presentation_id,
+                mimeType="application/pdf"
+            ),
+            operation="Export PDF",
+        )
 
     # =========================================================================
     # HELPERS
