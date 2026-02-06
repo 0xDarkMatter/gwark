@@ -21,6 +21,7 @@ from gwark.core.output import (
     print_error,
     print_header,
 )
+from gwark.core.async_utils import retry_execute
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
@@ -92,14 +93,17 @@ def activity(
         page_token = None
 
         while True:
-            results = service.files().list(
-                q=query,
-                pageSize=100,
-                fields="nextPageToken, files(id, name, mimeType, modifiedTime, owners, parents, webViewLink)",
-                includeItemsFromAllDrives=include_shared,
-                supportsAllDrives=include_shared,
-                pageToken=page_token,
-            ).execute()
+            results = retry_execute(
+                service.files().list(
+                    q=query,
+                    pageSize=100,
+                    fields="nextPageToken, files(id, name, mimeType, modifiedTime, owners, parents, webViewLink)",
+                    includeItemsFromAllDrives=include_shared,
+                    supportsAllDrives=include_shared,
+                    pageToken=page_token,
+                ),
+                operation="List Drive files",
+            )
 
             files = results.get("files", [])
             files_data.extend(files)

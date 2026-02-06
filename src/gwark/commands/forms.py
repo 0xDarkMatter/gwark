@@ -22,6 +22,7 @@ from gwark.core.output import (
     print_error,
     print_header,
 )
+from gwark.core.async_utils import retry_execute
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
@@ -75,12 +76,15 @@ def list_forms(
         if owned_only:
             query += " and 'me' in owners"
 
-        results = drive.files().list(
-            q=query,
-            fields="files(id, name, createdTime, modifiedTime, owners, webViewLink)",
-            pageSize=max_results,
-            orderBy="modifiedTime desc",
-        ).execute()
+        results = retry_execute(
+            drive.files().list(
+                q=query,
+                fields="files(id, name, createdTime, modifiedTime, owners, webViewLink)",
+                pageSize=max_results,
+                orderBy="modifiedTime desc",
+            ),
+            operation="List forms",
+        )
 
         forms = results.get('files', [])
         print_info(f"Found {len(forms)} forms")
@@ -140,7 +144,10 @@ def get_form(
         from gmail_mcp.auth import get_forms_service
 
         service = get_forms_service()
-        form = service.forms().get(formId=form_id).execute()
+        form = retry_execute(
+            service.forms().get(formId=form_id),
+            operation="Get form",
+        )
 
         print_success(f"Retrieved form: {form.get('info', {}).get('title', 'Untitled')}")
 
@@ -187,7 +194,10 @@ def responses(
         service = get_forms_service()
 
         # First get form structure for question titles
-        form = service.forms().get(formId=form_id).execute()
+        form = retry_execute(
+            service.forms().get(formId=form_id),
+            operation="Get form structure",
+        )
         form_title = form.get("info", {}).get("title", "Untitled")
 
         # Build question ID -> title mapping
@@ -202,11 +212,14 @@ def responses(
         page_token = None
 
         while len(all_responses) < max_results:
-            result = service.forms().responses().list(
-                formId=form_id,
-                pageToken=page_token,
-                pageSize=min(100, max_results - len(all_responses)),
-            ).execute()
+            result = retry_execute(
+                service.forms().responses().list(
+                    formId=form_id,
+                    pageToken=page_token,
+                    pageSize=min(100, max_results - len(all_responses)),
+                ),
+                operation="List form responses",
+            )
 
             responses_batch = result.get('responses', [])
             all_responses.extend(responses_batch)
@@ -294,7 +307,10 @@ def create(
         service = get_forms_service()
 
         # Step 1: Create form with title
-        form = service.forms().create(body={"info": {"title": title}}).execute()
+        form = retry_execute(
+            service.forms().create(body={"info": {"title": title}}),
+            operation="Create form",
+        )
         form_id = form["formId"]
         print_info(f"Created form ID: {form_id}")
 
@@ -316,7 +332,10 @@ def create(
             })
 
         if requests:
-            service.forms().batchUpdate(formId=form_id, body={"requests": requests}).execute()
+            retry_execute(
+                service.forms().batchUpdate(formId=form_id, body={"requests": requests}),
+                operation="Update form settings",
+            )
             print_info("Applied settings")
 
         edit_url = f"https://docs.google.com/forms/d/{form_id}/edit"
@@ -399,12 +418,18 @@ def add_question(
         }
 
         # Get current form to determine next index
-        form = service.forms().get(formId=form_id).execute()
+        form = retry_execute(
+            service.forms().get(formId=form_id),
+            operation="Get form",
+        )
         items = form.get("items", [])
         request["createItem"]["location"]["index"] = len(items)
 
         # Execute batch update
-        service.forms().batchUpdate(formId=form_id, body={"requests": [request]}).execute()
+        retry_execute(
+            service.forms().batchUpdate(formId=form_id, body={"requests": [request]}),
+            operation="Add question",
+        )
 
         print_success(f"Added question: {title}")
         print_info(f"Type: {QUESTION_TYPE_MAP.get(qtype, qtype)}")

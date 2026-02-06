@@ -30,6 +30,7 @@ from gwark.core.output import (
     print_header,
 )
 from gwark.ui.progress import FetchProgress
+from gwark.core.async_utils import retry_execute, check_anthropic_key
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
@@ -136,12 +137,15 @@ async def _search_async(
         page_token = None
 
         while True:
-            results = service.users().messages().list(
-                userId="me",
-                q=gmail_query,
-                maxResults=min(500, max_results - len(messages)),
-                pageToken=page_token,
-            ).execute()
+            results = retry_execute(
+                service.users().messages().list(
+                    userId="me",
+                    q=gmail_query,
+                    maxResults=min(500, max_results - len(messages)),
+                    pageToken=page_token,
+                ),
+                operation="Search emails",
+            )
 
             messages.extend(results.get("messages", []))
             page_token = results.get("nextPageToken")
@@ -190,15 +194,18 @@ async def _search_async(
 
         # AI Summarization
         if summarize:
-            try:
-                from gmail_mcp.ai import batch_summarize_emails
-                print_info("Generating AI summaries...")
-                emails = batch_summarize_emails(emails)
-                print_success("AI summaries generated")
-            except ImportError:
-                print_error("AI summarizer not available. Install anthropic package.")
-            except Exception as e:
-                print_error(f"AI summarization failed: {e}")
+            if not check_anthropic_key():
+                summarize = False
+            else:
+                try:
+                    from gmail_mcp.ai import batch_summarize_emails
+                    print_info("Generating AI summaries...")
+                    emails = batch_summarize_emails(emails)
+                    print_success("AI summaries generated")
+                except ImportError:
+                    print_error("AI summarizer not available. Install anthropic package.")
+                except Exception as e:
+                    print_error(f"AI summarization failed: {e}")
 
         # Format output
         formatter = OutputFormatter(output_dir=config.defaults.output_directory)
@@ -362,12 +369,15 @@ async def _sent_async(
 
         # Time estimation with AI
         if estimate_time:
-            try:
-                from gmail_mcp.ai import batch_summarize_emails
-                print_info("Estimating time spent...")
-                emails = batch_summarize_emails(emails)
-            except Exception as e:
-                print_error(f"Time estimation failed: {e}")
+            if not check_anthropic_key():
+                estimate_time = False
+            else:
+                try:
+                    from gmail_mcp.ai import batch_summarize_emails
+                    print_info("Estimating time spent...")
+                    emails = batch_summarize_emails(emails)
+                except Exception as e:
+                    print_error(f"Time estimation failed: {e}")
 
         # Format and save
         config = load_config()
@@ -472,7 +482,10 @@ def summarize(
             # Interactive batch mode - no API key needed
             _summarize_interactive(emails, input_file, batch_size, output, report)
         else:
-            # API mode
+            # API mode - requires ANTHROPIC_API_KEY
+            if not check_anthropic_key():
+                print_info("Use --interactive mode instead (no API key needed)")
+                raise typer.Exit(EXIT_ERROR)
             from gmail_mcp.ai import batch_summarize_emails
 
             summarized = batch_summarize_emails(emails, batch_size=batch_size)

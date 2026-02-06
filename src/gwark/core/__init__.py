@@ -20,6 +20,8 @@ from .async_utils import (
     parallel_map,
     retry_with_backoff,
     async_retry_with_backoff,
+    retry_execute,
+    check_anthropic_key,
 )
 from .slides_client import (
     SlidesClient,
@@ -51,6 +53,8 @@ __all__ = [
     "parallel_map",
     "retry_with_backoff",
     "async_retry_with_backoff",
+    "retry_execute",
+    "check_anthropic_key",
     "SlidesClient",
     "SlideInfo",
     "SlideElement",
