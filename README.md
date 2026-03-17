@@ -55,7 +55,15 @@ gwark
 ├── calendar
 │   └── meetings    Extract calendar meetings (-i for interactive)
 ├── drive
-│   └── activity    Extract file activity (-i for interactive)
+│   ├── ls          List folder contents (-i for interactive)
+│   ├── activity    Extract file activity (-i for interactive)
+│   ├── search      Search files with filters (-i for interactive)
+│   ├── mkdir       Create folders
+│   ├── rename      Rename files or folders
+│   ├── move        Move files/folders (supports cross-drive)
+│   ├── copy        Copy files/folders (--recursive for folders)
+│   ├── rm          Move files to trash (recoverable 30 days)
+│   └── share       Manage permissions (list/add/remove)
 ├── forms
 │   ├── list        List Google Forms (via Drive)
 │   ├── get         Get form structure and questions
@@ -154,8 +162,37 @@ gwark calendar meetings --work-only --profile work
 ### Drive
 
 ```bash
+# List folder contents
+gwark drive ls "Project Files" --type sheets
+gwark drive ls "Root Folder" --recursive --type docs
+
 # File activity for a month
 gwark drive activity --year 2025 --month 1
+
+# Search files
+gwark drive search "quarterly report" --type docs
+gwark drive search "invoice" --in "Finance" --type pdf
+
+# Create folders
+gwark drive mkdir "New Folder"
+gwark drive mkdir "Sub Folder" --parent "New Folder"
+
+# Move files (supports cross-drive)
+gwark drive move "Report.docx" "Archive" --confirm
+gwark drive move "Source" "Dest" --type sheets --dry-run
+
+# Copy files
+gwark drive copy "Template" "Projects" --name "Q1 Report"
+gwark drive copy "Shared Folder" "My Drive" --recursive
+
+# Trash files (recoverable for 30 days)
+gwark drive rm "old-file.txt"
+gwark drive rm "Archive" --type pdf --dry-run
+
+# Manage sharing
+gwark drive share list "Report"
+gwark drive share add "Report" user@example.com --role writer
+gwark drive share remove "Report" user@example.com
 ```
 
 ### Forms

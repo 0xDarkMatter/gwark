@@ -206,20 +206,26 @@ def profile_delete(
 
 @auth_app.command("setup")
 def auth_setup(
-    account_id: str = typer.Option("primary", "--account-id", "-a", help="Account identifier"),
+    service: str = typer.Option(
+        "all", "--service", "-s",
+        help="Google service to authenticate (gmail, calendar, drive, sheets, docs, forms, slides, people, all)",
+    ),
     manual: bool = typer.Option(False, "--manual", help="Use manual authorization code flow"),
     port: int = typer.Option(8080, "--port", "-p", help="Port for OAuth callback"),
 ) -> None:
-    """Set up OAuth2 authentication."""
+    """Set up OAuth2 authentication.
+
+    Authenticates with Google APIs and stores tokens in OS keyring
+    (Fabric-compliant: fabric-gwark service).
+    """
     print_header("gwark config auth setup")
 
     try:
-        from gmail_mcp.auth import OAuth2Manager, TokenManager
+        from gmail_mcp.auth import OAuth2Manager, get_credential_store
         from pathlib import Path
 
         config = load_config()
         credentials_path = config.auth.credentials_path
-        tokens_path = config.auth.tokens_path
 
         if not credentials_path.exists():
             print_error(f"Credentials file not found: {credentials_path}")
@@ -228,37 +234,79 @@ def auth_setup(
             raise typer.Exit(EXIT_ERROR)
 
         print_info(f"Using credentials: {credentials_path}")
-        print_info(f"Token storage: {tokens_path}")
+        print_info(f"Token storage: OS keyring (fabric-gwark)")
 
-        # Initialize OAuth2 manager with credentials path
-        manager = OAuth2Manager(
-            credentials_path=Path(credentials_path),
-        )
+        # Determine which services to authenticate
+        service_scopes = {
+            "gmail": ["https://www.googleapis.com/auth/gmail.readonly"],
+            "calendar": ["https://www.googleapis.com/auth/calendar.readonly"],
+            "drive": ["https://www.googleapis.com/auth/drive"],
+            "sheets": [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive.file",
+                "https://www.googleapis.com/auth/drive.metadata.readonly",
+            ],
+            "docs": ["https://www.googleapis.com/auth/documents"],
+            "forms": [
+                "https://www.googleapis.com/auth/forms.body",
+                "https://www.googleapis.com/auth/forms.responses.readonly",
+            ],
+            "slides": ["https://www.googleapis.com/auth/presentations"],
+            "people": [
+                "https://www.googleapis.com/auth/contacts.readonly",
+                "https://www.googleapis.com/auth/contacts.other.readonly",
+            ],
+        }
 
-        if manual:
-            # Manual flow - user copies authorization code
-            print_info("Starting manual OAuth2 flow...")
-            auth_url, state = manager.get_authorization_url()
-            print_info(f"\nOpen this URL in your browser:\n")
-            print(auth_url)
-            print()
-            auth_code = typer.prompt("Enter the authorization code")
-            credentials = manager.exchange_code_for_token(auth_code)
+        if service == "all":
+            # Combined scopes for a single auth flow
+            all_scopes = []
+            for scopes in service_scopes.values():
+                all_scopes.extend(scopes)
+            targets = [("all", list(set(all_scopes)))]
+        elif service in service_scopes:
+            targets = [(service, service_scopes[service])]
         else:
-            # Local server flow - browser callback
-            print_info("Starting OAuth2 flow...")
-            print_info("A browser window will open for authentication.")
-            credentials = manager.run_local_server_flow(port=port)
+            print_error(f"Unknown service: {service}")
+            print_info(f"Valid services: {', '.join(service_scopes.keys())}, all")
+            raise typer.Exit(EXIT_VALIDATION)
 
-        if credentials and credentials.valid:
-            # Save tokens using TokenManager
-            tokens_path.mkdir(parents=True, exist_ok=True)
-            token_manager = TokenManager(storage_path=tokens_path)
-            token_manager.save_credentials(credentials, account_id=account_id)
-            print_success(f"Authentication successful for account: {account_id}")
-        else:
-            print_error("Authentication failed")
-            raise typer.Exit(EXIT_ERROR)
+        store = get_credential_store()
+
+        for svc_name, scopes in targets:
+            print_info(f"\nAuthenticating: {svc_name}")
+
+            manager = OAuth2Manager(
+                credentials_path=Path(credentials_path),
+                scopes=scopes,
+            )
+
+            if manual:
+                print_info("Starting manual OAuth2 flow...")
+                auth_url, state = manager.get_authorization_url()
+                print_info(f"\nOpen this URL in your browser:\n")
+                print(auth_url)
+                print()
+                auth_code = typer.prompt("Enter the authorization code")
+                credentials = manager.exchange_code_for_token(auth_code)
+            else:
+                print_info("A browser window will open for authentication.")
+                credentials = manager.run_local_server_flow(port=port)
+
+            if credentials and (credentials.token or credentials.refresh_token):
+                if svc_name == "all":
+                    # Save under each service name so per-service lookup works
+                    for name in service_scopes:
+                        store.save_google_credentials(credentials, name)
+                    store.save_google_credentials(credentials, "default")
+                else:
+                    store.save_google_credentials(credentials, svc_name)
+
+                print_success(f"Authentication successful for: {svc_name}")
+                print_info(f"Stored in: OS keyring (fabric-gwark)")
+            else:
+                print_error(f"Authentication failed for: {svc_name}")
+                raise typer.Exit(EXIT_ERROR)
 
     except ImportError as e:
         print_error(f"Missing dependency: {e}")
@@ -296,44 +344,68 @@ def auth_list() -> None:
     """List configured accounts."""
     print_header("gwark config auth list")
 
-    config = load_config()
-    tokens_path = Path(config.auth.tokens_path)
+    try:
+        from gmail_mcp.auth import get_credential_store
 
-    if not tokens_path.exists():
-        print_info("No accounts configured yet.")
-        print_info("Run 'gwark config auth setup' to add an account.")
-        return
+        store = get_credential_store()
+        status = store.status()
 
-    token_files = list(tokens_path.glob("*.token"))
-    if not token_files:
-        print_info("No accounts configured yet.")
-        return
+        if not status["authenticated"]:
+            print_info("No accounts configured yet.")
+            print_info("Run 'gwark config auth setup' to add an account.")
+            return
 
-    console.print("\n[bold]Configured Accounts[/bold]\n")
-    for tf in token_files:
-        account_id = tf.stem
-        default = " [green](default)[/green]" if account_id == config.auth.default_account else ""
-        console.print(f"  - [cyan]{account_id}[/cyan]{default}")
+        console.print("\n[bold]Configured Services[/bold]\n")
+        console.print(f"  Storage: [cyan]{status['source']}[/cyan] (keyring: {'available' if status['keyring_available'] else 'not available'})")
+        console.print("")
+
+        for svc in status["services"]:
+            source = store.get_credentials_source(svc)
+            console.print(f"  - [cyan]{svc}[/cyan] ({source})")
+
+    except Exception as e:
+        print_error(f"Failed to list accounts: {e}")
+        raise typer.Exit(EXIT_ERROR)
 
 
 @auth_app.command("remove")
 def auth_remove(
-    account_id: str = typer.Argument(..., help="Account to remove"),
+    service: str = typer.Argument(..., help="Service to remove (gmail, calendar, drive, etc. or 'all')"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ) -> None:
-    """Remove an account's credentials."""
-    config = load_config()
-    tokens_path = Path(config.auth.tokens_path)
-    token_file = tokens_path / f"{account_id}.token"
+    """Remove stored credentials for a service."""
+    try:
+        from gmail_mcp.auth import get_credential_store
 
-    if not token_file.exists():
-        print_warning(f"Account '{account_id}' not found.")
+        store = get_credential_store()
+
+        if service == "all":
+            services = store.list_services()
+            if not services:
+                print_warning("No credentials found.")
+                raise typer.Exit(EXIT_ERROR)
+
+            if not force:
+                confirm = typer.confirm(f"Remove credentials for all {len(services)} services?")
+                if not confirm:
+                    raise typer.Abort()
+
+            for svc in services:
+                store.delete_google_credentials(svc)
+            print_success(f"Removed credentials for: {', '.join(services)}")
+        else:
+            if not store.has_google_credentials(service):
+                print_warning(f"No credentials found for '{service}'.")
+                raise typer.Exit(EXIT_ERROR)
+
+            if not force:
+                confirm = typer.confirm(f"Remove credentials for '{service}'?")
+                if not confirm:
+                    raise typer.Abort()
+
+            store.delete_google_credentials(service)
+            print_success(f"Removed credentials for: {service}")
+
+    except Exception as e:
+        print_error(f"Failed to remove: {e}")
         raise typer.Exit(EXIT_ERROR)
-
-    if not force:
-        confirm = typer.confirm(f"Remove account '{account_id}'?")
-        if not confirm:
-            raise typer.Abort()
-
-    token_file.unlink()
-    print_success(f"Removed account: {account_id}")

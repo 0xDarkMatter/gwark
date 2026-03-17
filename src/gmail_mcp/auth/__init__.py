@@ -1,5 +1,6 @@
 """OAuth2 authentication utilities for Google APIs."""
 
+from gmail_mcp.auth.credential_store import CredentialStore, get_credential_store
 from gmail_mcp.auth.oauth import (
     get_gwark_dir,
     get_google_service,
@@ -17,6 +18,8 @@ from gmail_mcp.auth.oauth2 import OAuth2Manager
 from gmail_mcp.auth.token_manager import TokenManager
 
 __all__ = [
+    "CredentialStore",
+    "get_credential_store",
     "get_gwark_dir",
     "get_google_service",
     "get_calendar_service",

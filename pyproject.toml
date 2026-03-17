@@ -173,8 +173,12 @@ ignore_missing_imports = true
 module = "tests.*"
 disallow_untyped_defs = false
 
-[tool.fabric]
+[tool.clique]
 description = "Gmail integration - messages, threads, labels, search"
 resources = ["messages", "threads", "labels", "search", "calendar", "drive", "forms", "docs", "sheets"]
 auth = "oauth2"
 status = "stable"
+env-key = ""
+api-url = "https://console.cloud.google.com/apis/credentials"
+system-deps = []
+setup-notes = "Requires Google OAuth2 credentials -- run 'gwark auth login' to authenticate"
