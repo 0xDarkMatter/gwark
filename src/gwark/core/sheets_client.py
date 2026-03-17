@@ -524,6 +524,15 @@ class SheetsClient:
         values: Optional[List[Dict[str, str]]] = None,
         apply_style: bool = True,
         column_widths: Optional[List[int]] = None,
+        row_sort_orders: Optional[Dict[str, str]] = None,
+        col_sort_orders: Optional[Dict[str, str]] = None,
+        sort_by_value: Optional[int] = None,
+        filters: Optional[Dict[str, List[str]]] = None,
+        value_display: Optional[str] = None,
+        value_layout: Optional[str] = None,
+        show_totals: bool = True,
+        date_groups: Optional[Dict[str, str]] = None,
+        group_limit: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Create a pivot table using Sheets API batchUpdate.
 
@@ -539,22 +548,15 @@ class SheetsClient:
                               COUNTUNIQUE, MEDIAN, STDEV)
             apply_style: Apply default pivot styling (default: True)
             column_widths: Optional column widths in pixels
-
-        Returns:
-            API response dict
-
-        Example:
-            >>> client.create_pivot_table(
-            ...     sheet_id="1abc...",
-            ...     source_range="Data!A1:E100",
-            ...     target_cell="Pivot!A1",
-            ...     rows=["Category", "Region"],
-            ...     columns=["Month"],
-            ...     values=[
-            ...         {"field": "Sales", "function": "SUM"},
-            ...         {"field": "Profit", "function": "AVERAGE"},
-            ...     ]
-            ... )
+            row_sort_orders: Per-field sort direction for rows (e.g., {"Category": "DESCENDING"})
+            col_sort_orders: Per-field sort direction for columns
+            sort_by_value: Index into values list to sort rows by (valueBucket)
+            filters: Source data filters (e.g., {"Region": ["East", "West"]})
+            value_display: Calculated display type (PERCENT_OF_ROW_TOTAL, etc.)
+            value_layout: Multiple values layout (HORIZONTAL or VERTICAL)
+            show_totals: Show subtotals on rows/columns (default: True)
+            date_groups: Date grouping rules (e.g., {"Date": "YEAR_MONTH"})
+            group_limit: Max rows/columns shown in pivot groups
         """
         spreadsheet = self.get_spreadsheet(sheet_id)
 
@@ -572,8 +574,25 @@ class SheetsClient:
         headers = source_worksheet.row_values(source_grid["startRowIndex"] + 1)
         header_map = {name: idx for idx, name in enumerate(headers)}
 
-        # Build pivot table request
-        pivot_spec = {
+        # Build row groups
+        pivot_rows = []
+        for i, r in enumerate(rows):
+            sort_order = (row_sort_orders or {}).get(r, "ASCENDING")
+            group: Dict[str, Any] = {
+                "sourceColumnOffset": header_map.get(r, 0),
+                "showTotals": show_totals,
+                "sortOrder": sort_order,
+            }
+            if sort_by_value is not None and i == 0:
+                group["valueBucket"] = {"valuesIndex": sort_by_value}
+            if date_groups and r in date_groups:
+                group["groupRule"] = {"dateTimeRule": {"type": date_groups[r]}}
+            if group_limit is not None:
+                group["groupLimit"] = {"countLimit": group_limit}
+            pivot_rows.append(group)
+
+        # Build pivot table spec
+        pivot_spec: Dict[str, Any] = {
             "source": {
                 "sheetId": source_sheet_id,
                 "startRowIndex": source_grid["startRowIndex"],
@@ -581,34 +600,51 @@ class SheetsClient:
                 "startColumnIndex": source_grid["startColumnIndex"],
                 "endColumnIndex": source_grid["endColumnIndex"],
             },
-            "rows": [
-                {
-                    "sourceColumnOffset": header_map.get(r, 0),
-                    "showTotals": True,
-                    "sortOrder": "ASCENDING",
-                }
-                for r in rows
-            ],
+            "rows": pivot_rows,
         }
 
+        # Column groups
         if columns:
-            pivot_spec["columns"] = [
-                {
+            pivot_cols = []
+            for c in columns:
+                sort_order = (col_sort_orders or {}).get(c, "ASCENDING")
+                col_group: Dict[str, Any] = {
                     "sourceColumnOffset": header_map.get(c, 0),
-                    "showTotals": True,
-                    "sortOrder": "ASCENDING",
+                    "showTotals": show_totals,
+                    "sortOrder": sort_order,
                 }
-                for c in columns
-            ]
+                if date_groups and c in date_groups:
+                    col_group["groupRule"] = {"dateTimeRule": {"type": date_groups[c]}}
+                pivot_cols.append(col_group)
+            pivot_spec["columns"] = pivot_cols
 
+        # Value aggregations
         if values:
-            pivot_spec["values"] = [
-                {
+            pivot_values = []
+            for v in values:
+                val_spec: Dict[str, Any] = {
                     "sourceColumnOffset": header_map.get(v["field"], 0),
                     "summarizeFunction": v.get("function", "SUM").upper(),
                 }
-                for v in values
-            ]
+                if value_display:
+                    val_spec["calculatedDisplayType"] = value_display
+                pivot_values.append(val_spec)
+            pivot_spec["values"] = pivot_values
+
+        # Value layout (horizontal/vertical for multiple values)
+        if value_layout:
+            pivot_spec["valueLayout"] = value_layout
+
+        # Filter specs
+        if filters:
+            filter_specs = []
+            for field_name, visible_vals in filters.items():
+                offset = header_map.get(field_name, 0)
+                filter_specs.append({
+                    "filterCriteria": {"visibleValues": visible_vals},
+                    "columnOffsetIndex": offset,
+                })
+            pivot_spec["filterSpecs"] = filter_specs
 
         # Construct batchUpdate request
         request = {

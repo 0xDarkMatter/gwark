@@ -66,6 +66,11 @@ class ParagraphStyle(BaseModel):
     indent_first_line: Optional[int] = Field(default=None, description="First line indent in PT")
     indent_start: Optional[int] = Field(default=None, description="Start indent in PT")
 
+    # Border (bottom only for dividers/answer fields)
+    border_bottom_color: Optional[str] = Field(default=None, description="Bottom border color as hex")
+    border_bottom_width: Optional[float] = Field(default=None, description="Bottom border width in PT")
+    border_bottom_style: Optional[str] = Field(default=None, description="Border style: SOLID, DOTTED, DASHED")
+
     def to_text_style(self) -> TextStyle:
         """Extract text style portion."""
         return TextStyle(
@@ -97,6 +102,14 @@ class ParagraphStyle(BaseModel):
 
         if self.indent_start is not None:
             style["indentStart"] = {"magnitude": self.indent_start, "unit": "PT"}
+
+        if self.border_bottom_color:
+            style["borderBottom"] = {
+                "color": {"color": {"rgbColor": _hex_to_rgb(self.border_bottom_color)}},
+                "width": {"magnitude": self.border_bottom_width or 1, "unit": "PT"},
+                "dashStyle": self.border_bottom_style or "SOLID",
+                "padding": {"magnitude": 4, "unit": "PT"},
+            }
 
         return style
 
@@ -200,6 +213,23 @@ def get_default_theme() -> DocTheme:
                 color="#2d2d2d",
                 space_before=8,
                 space_after=8,
+            ),
+            "DIVIDER": ParagraphStyle(
+                space_before=12,
+                space_after=12,
+                border_bottom_color="#cccccc",
+                border_bottom_width=0.5,
+                border_bottom_style="SOLID",
+            ),
+            "ANSWER_FIELD": ParagraphStyle(
+                font_family="Roboto",
+                font_size=11,
+                color="#999999",
+                space_before=4,
+                space_after=8,
+                border_bottom_color="#cccccc",
+                border_bottom_width=1,
+                border_bottom_style="SOLID",
             ),
         },
         inline={

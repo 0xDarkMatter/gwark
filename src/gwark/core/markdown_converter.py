@@ -2,8 +2,14 @@
 
 Converts markdown text to Google Docs API batchUpdate requests,
 preserving formatting and applying themes.
+
+Three-phase request model:
+  Phase 1: insertText, insertTable, insertPageBreak  (state.requests)
+  Phase 2: createParagraphBullets                     (state.bullet_ranges)
+  Phase 3: updateParagraphStyle, updateTextStyle      (state.style_ranges)
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -18,6 +24,7 @@ class ConversionState:
 
     index: int = 1  # Docs index starts at 1 (before first char)
     requests: list = field(default_factory=list)
+    bullet_ranges: list = field(default_factory=list)
     # Track ranges for deferred style application
     style_ranges: list = field(default_factory=list)
 
@@ -34,16 +41,19 @@ class MarkdownToDocsConverter:
         >>> # Use requests with docs_service.documents().batchUpdate()
     """
 
-    def __init__(self, theme: Optional[DocTheme] = None):
-        """Initialize converter with optional theme.
-
-        Args:
-            theme: Document theme for styling. Uses default if not provided.
-        """
+    def __init__(
+        self,
+        theme: Optional[DocTheme] = None,
+        use_native_tables: bool = True,
+    ):
         self.theme = theme or get_default_theme()
+        self.use_native_tables = use_native_tables
         self.state = ConversionState()
-        # Use mistune's AST renderer
-        self._md = mistune.create_markdown(renderer=None)
+        # Use mistune's AST renderer with plugins for tables, strikethrough, task lists
+        self._md = mistune.create_markdown(
+            renderer=None,
+            plugins=['table', 'strikethrough', 'task_lists'],
+        )
 
     def convert(self, markdown_text: str, start_index: int | None = None) -> list[dict]:
         """Convert markdown text to Google Docs API requests.
@@ -59,15 +69,30 @@ class MarkdownToDocsConverter:
         if start_index is not None:
             self.state.index = start_index
 
+        # Pre-process: convert bare checkbox lines to task list syntax
+        # [ ] Item or [x] Item → - [ ] Item or - [x] Item
+        processed = re.sub(
+            r'^(\[[ xX]\])', r'- \1', markdown_text, flags=re.MULTILINE
+        )
+
+        # Pre-process: mark *** as page breaks (distinct from --- dividers)
+        processed = re.sub(
+            r'^\*{3,}\s*$', '<!-- GWARK_PAGE_BREAK -->', processed, flags=re.MULTILINE
+        )
+
         # Parse to AST tokens
-        tokens = self._md(markdown_text)
+        tokens = self._md(processed)
 
         # Process each token
         for token in tokens:
             self._process_token(token)
 
-        # Return requests in order: insertions first, then styles
-        return self.state.requests + self._build_style_requests()
+        # Three-phase return: insertions → bullets → styles
+        return (
+            self.state.requests
+            + self._build_bullet_requests()
+            + self._build_style_requests()
+        )
 
     def _process_token(self, token: dict) -> None:
         """Route token to appropriate handler."""
@@ -78,11 +103,14 @@ class MarkdownToDocsConverter:
             "block_code": self._handle_code_block,
             "thematic_break": self._handle_thematic_break,
             "block_quote": self._handle_block_quote,
+            "block_html": self._handle_block_html,
             "table": self._handle_table,
         }
         token_type = token.get("type", "")
         handler = handlers.get(token_type, self._handle_unknown)
         handler(token)
+
+    # ── Block handlers ──────────────────────────────────────────────
 
     def _handle_heading(self, token: dict) -> None:
         """Handle heading tokens (# to ######)."""
@@ -104,12 +132,20 @@ class MarkdownToDocsConverter:
         self._process_inline_styles(children, start_idx)
 
     def _handle_paragraph(self, token: dict) -> None:
-        """Handle paragraph tokens."""
+        """Handle paragraph tokens, with answer field detection."""
         children = token.get("children", [])
         text = self._extract_text(children)
 
         if not text.strip():
             return  # Skip empty paragraphs
+
+        # Answer field: line of 3+ underscores only → styled answer area
+        if re.match(r'^_{3,}$', text.strip()):
+            start_idx = self.state.index
+            self._insert_text(" \n")
+            end_idx = self.state.index - 1
+            self._queue_paragraph_style(start_idx, end_idx, "ANSWER_FIELD")
+            return
 
         start_idx = self.state.index
         self._insert_text(text + "\n")
@@ -121,38 +157,59 @@ class MarkdownToDocsConverter:
         # Process inline styles
         self._process_inline_styles(children, start_idx)
 
-    def _handle_list(self, token: dict) -> None:
-        """Handle ordered and unordered lists."""
+    def _handle_list(self, token: dict, nesting_level: int = 0) -> None:
+        """Handle ordered and unordered lists with native Google Docs bullets."""
         ordered = token.get("attrs", {}).get("ordered", False)
+        default_preset = "NUMBERED_DECIMAL_NESTED" if ordered else "BULLET_DISC_CIRCLE_SQUARE"
         children = token.get("children", [])
 
-        for idx, item in enumerate(children, start=1):
-            if item.get("type") != "list_item":
+        for item in children:
+            item_type = item.get("type", "")
+            if item_type not in ("list_item", "task_list_item"):
                 continue
 
             item_children = item.get("children", [])
-            # Extract text from potential nested paragraph
-            if item_children and item_children[0].get("type") == "paragraph":
+
+            # Determine preset — task_list_item (from mistune plugin) uses checkbox
+            is_task = item_type == "task_list_item"
+            is_checked = item.get("attrs", {}).get("checked", False) if is_task else False
+            preset = "BULLET_CHECKBOX" if is_task else default_preset
+
+            # Extract text from nested paragraph or block_text
+            first_child_type = item_children[0].get("type", "") if item_children else ""
+            if first_child_type in ("paragraph", "block_text"):
                 item_text = self._extract_text(item_children[0].get("children", []))
+                inline_children = item_children[0].get("children", [])
             else:
                 item_text = self._extract_text(item_children)
+                inline_children = item_children
 
-            # Format bullet/number prefix
-            prefix = f"{idx}. " if ordered else "• "
-            full_text = prefix + item_text + "\n"
+            # Prepend ☑ for checked task items (API can't set checked state)
+            if is_checked:
+                item_text = "☑ " + item_text
 
             start_idx = self.state.index
-            self._insert_text(full_text)
-            end_idx = self.state.index - 1
+            self._insert_text(item_text + "\n")
+            end_idx = self.state.index  # Include newline for bullet range
 
-            self._queue_paragraph_style(start_idx, end_idx, "NORMAL_TEXT")
+            # Queue bullet creation
+            self.state.bullet_ranges.append({
+                "start": start_idx,
+                "end": end_idx,
+                "preset": preset,
+                "nesting_level": nesting_level,
+            })
 
-            # Process inline styles (offset by prefix length)
-            if item_children and item_children[0].get("type") == "paragraph":
-                self._process_inline_styles(
-                    item_children[0].get("children", []),
-                    start_idx + len(prefix)
-                )
+            # Queue paragraph style
+            self._queue_paragraph_style(start_idx, end_idx - 1, "NORMAL_TEXT")
+
+            # Process inline styles
+            self._process_inline_styles(inline_children, start_idx)
+
+            # Handle nested lists (remaining children after first content)
+            for sub_child in item_children[1:]:
+                if sub_child.get("type") == "list":
+                    self._handle_list(sub_child, nesting_level=nesting_level + 1)
 
     def _handle_code_block(self, token: dict) -> None:
         """Handle fenced code blocks."""
@@ -182,17 +239,25 @@ class MarkdownToDocsConverter:
                 self._process_inline_styles(child.get("children", []), start_idx)
 
     def _handle_thematic_break(self, token: dict) -> None:
-        """Handle horizontal rule (---) as page break."""
-        # Insert a page break
-        self.state.requests.append({
-            "insertPageBreak": {
-                "location": {"index": self.state.index}
-            }
-        })
-        self.state.index += 1  # Page break counts as 1 char
+        """Handle --- as a styled horizontal divider."""
+        start_idx = self.state.index
+        self._insert_text(" \n")
+        end_idx = self.state.index - 1
+        self._queue_paragraph_style(start_idx, end_idx, "DIVIDER")
+
+    def _handle_block_html(self, token: dict) -> None:
+        """Handle HTML blocks — specifically our page break sentinel."""
+        raw = token.get("raw", "")
+        if "GWARK_PAGE_BREAK" in raw:
+            self.state.requests.append({
+                "insertPageBreak": {
+                    "location": {"index": self.state.index}
+                }
+            })
+            self.state.index += 1
 
     def _handle_table(self, token: dict) -> None:
-        """Handle markdown tables."""
+        """Handle markdown tables with native Google Docs tables."""
         children = token.get("children", [])
 
         # Find header and body
@@ -210,63 +275,68 @@ class MarkdownToDocsConverter:
             return
 
         num_rows = len(all_rows)
-        num_cols = len(all_rows[0].get("children", [])) if all_rows else 0
+        num_cols = max(len(row.get("children", [])) for row in all_rows) if all_rows else 0
 
         if num_cols == 0:
             return
 
-        # Insert table
+        if not self.use_native_tables:
+            self._fallback_table_as_text(all_rows, head_rows)
+            return
+
+        table_start = self.state.index
+
+        # Insert the table structure
         self.state.requests.append({
             "insertTable": {
-                "location": {"index": self.state.index},
+                "location": {"index": table_start},
                 "rows": num_rows,
                 "columns": num_cols,
             }
         })
 
-        # Table structure: table start, then rows, each with cells
-        # After insertTable, we need to navigate the structure
-        # Each table adds: 1 (table) + rows * (1 + cols * 2) indices approximately
-        # This is complex - we'll insert text into cells after table creation
+        # Google Docs table index structure:
+        # table(1) + per row: tableRow(1) + per cell: tableCell(1) + paragraph_newline(1)
+        # Total structural size = 1 + num_rows * (1 + 2 * num_cols)
+        # Cell(r, c) content index = table_start + 3 + r * (1 + 2*num_cols) + 2*c
+        table_size = 1 + num_rows * (1 + 2 * num_cols)
 
-        # For now, calculate cell indices and queue text insertions
-        # Table element is at state.index
-        # First cell starts at state.index + 4 (table=1, tableRow=1, tableCell=1, para=1)
+        # Collect cell data with target indices
+        cell_insertions = []  # (index, text, is_header)
 
-        table_start = self.state.index
-        cell_base = table_start + 4  # First cell content index
-
-        cell_texts = []
-        is_header = []
-
-        for row_idx, row in enumerate(all_rows):
-            row_cells = row.get("children", [])
-            for col_idx, cell in enumerate(row_cells):
+        for r, row in enumerate(all_rows):
+            cells = row.get("children", [])
+            for c, cell in enumerate(cells):
                 cell_children = cell.get("children", [])
                 cell_text = self._extract_text(cell_children)
-                cell_texts.append(cell_text)
-                is_header.append(row_idx < len(head_rows))
+                if cell_text:
+                    idx = table_start + 3 + r * (1 + 2 * num_cols) + 2 * c
+                    cell_insertions.append((idx, cell_text, r < len(head_rows)))
 
-        # Calculate table end index for state update
-        # Each cell has: paragraph marker + content + cell end
-        # Approximation: table adds significant indices
-        table_end_offset = 3 + num_rows * (1 + num_cols * 3)
-        self.state.index += table_end_offset
+        # Insert cell content in REVERSE order to preserve index stability
+        for idx, text, is_header in reversed(cell_insertions):
+            self.state.requests.append({
+                "insertText": {
+                    "location": {"index": idx},
+                    "text": text,
+                }
+            })
+            # Bold header cells
+            if is_header:
+                self.state.style_ranges.append({
+                    "type": "text",
+                    "start": idx,
+                    "end": idx + len(text),
+                    "style_name": "bold",
+                    "style": self.theme.inline.get("bold"),
+                })
 
-        # Queue cell text insertions (processed after main conversion)
-        # Note: Actual implementation would need precise index calculation
-        # which requires knowing exact table structure after creation
-        # For MVP, we format as text table
-        self._fallback_table_as_text(all_rows, head_rows)
+        # Advance state index past the table
+        total_text_len = sum(len(t) for _, t, _ in cell_insertions)
+        self.state.index += table_size + total_text_len
 
     def _fallback_table_as_text(self, all_rows: list, head_rows: list) -> None:
         """Fallback: render table as formatted text (more reliable)."""
-        # Remove the insertTable request we just added
-        if self.state.requests and "insertTable" in self.state.requests[-1]:
-            self.state.requests.pop()
-            # Reset index to before table insert attempt
-            # (simplified - in production would track more precisely)
-
         lines = []
         for row_idx, row in enumerate(all_rows):
             cells = row.get("children", [])
@@ -296,6 +366,8 @@ class MarkdownToDocsConverter:
             text = self._extract_text(children)
             if text.strip():
                 self._insert_text(text + "\n")
+
+    # ── Text extraction ─────────────────────────────────────────────
 
     def _extract_text(self, children: list) -> str:
         """Recursively extract plain text from token children."""
@@ -327,6 +399,8 @@ class MarkdownToDocsConverter:
             }
         })
         self.state.index += len(text)
+
+    # ── Style queueing ──────────────────────────────────────────────
 
     def _queue_paragraph_style(self, start: int, end: int, style_name: str) -> None:
         """Queue a paragraph style to be applied."""
@@ -429,8 +503,41 @@ class MarkdownToDocsConverter:
 
             offset += len(child_text)
 
+    # ── Request builders ────────────────────────────────────────────
+
+    def _build_bullet_requests(self) -> list[dict]:
+        """Build createParagraphBullets requests from queued ranges (Phase 2)."""
+        requests = []
+        for item in self.state.bullet_ranges:
+            requests.append({
+                "createParagraphBullets": {
+                    "range": {
+                        "startIndex": item["start"],
+                        "endIndex": item["end"],
+                    },
+                    "bulletPreset": item["preset"],
+                }
+            })
+            # Set nesting indentation for nested lists
+            if item["nesting_level"] > 0:
+                indent_pt = 36 * (item["nesting_level"] + 1)
+                requests.append({
+                    "updateParagraphStyle": {
+                        "range": {
+                            "startIndex": item["start"],
+                            "endIndex": item["end"],
+                        },
+                        "paragraphStyle": {
+                            "indentStart": {"magnitude": indent_pt, "unit": "PT"},
+                            "indentFirstLine": {"magnitude": indent_pt, "unit": "PT"},
+                        },
+                        "fields": "indentStart,indentFirstLine",
+                    }
+                })
+        return requests
+
     def _build_style_requests(self) -> list[dict]:
-        """Build style update requests from queued ranges."""
+        """Build style update requests from queued ranges (Phase 3)."""
         requests = []
 
         for item in self.state.style_ranges:
@@ -473,6 +580,8 @@ class MarkdownToDocsConverter:
 
             elif item["type"] == "text":
                 style = item["style"]
+                if style is None:
+                    continue
                 text_style = style.to_docs_api()
 
                 if text_style:
@@ -520,6 +629,9 @@ def _flatten_fields(style_dict: dict, prefix: str = "") -> list[str]:
     return fields
 
 
+# ── Reverse converter: Google Docs → Markdown ───────────────────────
+
+
 class DocsToMarkdownConverter:
     """Convert Google Docs content back to markdown.
 
@@ -535,6 +647,7 @@ class DocsToMarkdownConverter:
         Returns:
             Markdown string
         """
+        self._lists = document.get("lists", {})
         body = document.get("body", {})
         content = body.get("content", [])
 
@@ -554,6 +667,7 @@ class DocsToMarkdownConverter:
         elements = para.get("elements", [])
         style = para.get("paragraphStyle", {})
         named_style = style.get("namedStyleType", "NORMAL_TEXT")
+        bullet = para.get("bullet")
 
         text_parts = []
         for elem in elements:
@@ -561,8 +675,14 @@ class DocsToMarkdownConverter:
             content = text_run.get("content", "")
             text_style = text_run.get("textStyle", {})
 
+            # Detect inline code via monospace font
+            font_family = text_style.get("weightedFontFamily", {}).get("fontFamily", "")
+            is_code = font_family in ("Roboto Mono", "Courier New", "Consolas", "Source Code Pro")
+
             # Apply inline formatting
-            if text_style.get("bold"):
+            if is_code and not text_style.get("bold"):
+                content = f"`{content.strip()}`"
+            elif text_style.get("bold"):
                 content = f"**{content.strip()}**"
             if text_style.get("italic"):
                 content = f"*{content.strip()}*"
@@ -575,6 +695,40 @@ class DocsToMarkdownConverter:
             text_parts.append(content)
 
         text = "".join(text_parts).rstrip("\n")
+
+        # Handle bullet/list paragraphs
+        if bullet:
+            list_id = bullet.get("listId", "")
+            nesting = bullet.get("nestingLevel", 0)
+            indent = "  " * nesting
+
+            # Determine ordered vs unordered from document lists
+            is_ordered = False
+            is_checkbox = False
+            if list_id and list_id in self._lists:
+                list_props = self._lists[list_id].get("listProperties", {})
+                nesting_levels = list_props.get("nestingLevels", [])
+                if nesting < len(nesting_levels):
+                    glyph_type = nesting_levels[nesting].get("glyphType", "")
+                    glyph_symbol = nesting_levels[nesting].get("glyphSymbol", "")
+                    if glyph_type in ("DECIMAL", "ALPHA", "UPPER_ALPHA", "ROMAN", "UPPER_ROMAN"):
+                        is_ordered = True
+                    if glyph_symbol == "☐" or "CHECKBOX" in glyph_type.upper() if glyph_type else False:
+                        is_checkbox = True
+
+            if is_checkbox:
+                # Detect checked state from ☑ prefix
+                if text.startswith("☑ "):
+                    return f"{indent}- [x] {text[2:]}"
+                return f"{indent}- [ ] {text}"
+            elif is_ordered:
+                return f"{indent}1. {text}"
+            else:
+                return f"{indent}- {text}"
+
+        # Detect divider (empty paragraph with bottom border)
+        if not text.strip() and style.get("borderBottom"):
+            return "\n---\n"
 
         # Add heading prefix based on named style
         if named_style == "HEADING_1":

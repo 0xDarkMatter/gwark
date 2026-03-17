@@ -89,9 +89,8 @@ python -m gwark email search --domain example.com --days 1 --max-results 3
 
 ## Current Status
 
-- **Working**: CLI, email search, config, forms, docs (v2 with section-aware editing), **sheets** (full CRUD + pivot tables)
+- **Working**: CLI, email search, config, forms, docs (v2 with section-aware editing), **sheets** (full CRUD + pivot tables), **drive** (full file management + sharing)
 - **Optimized**: Calendar (parallel multi-calendar fetching), Sheets (parallel range reads)
-- **Needs Testing**: Drive activity
 - **Planned**: MCP server, summary caching
 
 ## Async Utilities
@@ -154,6 +153,30 @@ Pivot tables are automatically styled when created via `create_pivot_table()`:
 - Grand Total: Medium gray (#e0e0e0), bold
 
 To disable auto-styling: `create_pivot_table(..., apply_style=False)`
+
+## Drive Module
+
+Full file management using Google Drive API v3.
+
+| File | Purpose |
+|------|---------|
+| `commands/drive.py` | All commands: ls, activity, search, mkdir, rename, move, copy, rm, share |
+
+**Key helpers (private, in drive.py):**
+- `_extract_file_id(value)` — Parse URL/ID from any Google Drive/Docs/Sheets/Slides URL
+- `_resolve_target(service, value, require_folder)` — Unified resolver: ID/URL → metadata, or name search with disambiguation
+- `_resolve_file(service, name, mime_filter)` — Search by name with optional MIME filter
+- `_get_parents(service, file_id)` — Fetch parent folder IDs (needed for move)
+- `_list_folder_files(service, folder_id, type_filter, recursive)` — BFS folder listing
+- `_display_file_preview(files, action, destination)` — Preview for destructive operations
+
+**Shared drive support:** Every API call uses `supportsAllDrives=True` and `includeItemsFromAllDrives=True`.
+
+**Safety pattern:** Destructive commands (move, copy, rm) support `--dry-run` and `--confirm` flags. Each prints a warning before execution explaining what will happen.
+
+**Permanent delete is disabled.** The `rm` command only moves files to trash (recoverable 30 days). The `--permanent` option is commented out in the code — uncomment to re-enable hard deletes.
+
+**Share subcommands:** `gwark drive share list/add/remove` — Typer sub-app for permission management.
 
 ## Forms Module
 

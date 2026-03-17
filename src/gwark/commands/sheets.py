@@ -639,36 +639,104 @@ def resize_columns(
         raise typer.Exit(EXIT_ERROR)
 
 
+# Display type mapping: short names -> API enum values
+_DISPLAY_MAP = {
+    "pct-row": "PERCENT_OF_ROW_TOTAL",
+    "pct-col": "PERCENT_OF_COLUMN_TOTAL",
+    "pct-total": "PERCENT_OF_GRAND_TOTAL",
+}
+
+# Date grouping mapping: friendly names -> API enum values
+_DATE_GROUP_MAP = {
+    "year": "YEAR",
+    "quarter": "QUARTER",
+    "month": "MONTH",
+    "year_month": "YEAR_MONTH",
+    "year_quarter": "YEAR_QUARTER",
+    "year_month_day": "YEAR_MONTH_DAY",
+    "day_of_week": "DAY_OF_WEEK",
+    "day_of_month": "DAY_OF_MONTH",
+    "day_of_year": "DAY_OF_YEAR",
+    "hour": "HOUR_OF_DAY",
+}
+
+
+def _normalize_sort(val: str) -> str:
+    """Normalize sort direction shorthand to API enum."""
+    val = val.upper()
+    if val in ("DESC", "DESCENDING"):
+        return "DESCENDING"
+    return "ASCENDING"
+
+
+def _parse_fields_with_sort(raw: str) -> tuple:
+    """Parse comma-separated fields with optional :asc/:desc suffix.
+
+    Returns (field_names, sort_orders_dict).
+    """
+    fields = []
+    sort_orders = {}
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        # Check for trailing :asc or :desc (case-insensitive)
+        lower = part.lower()
+        if lower.endswith(":desc") or lower.endswith(":descending"):
+            name = part[:part.rfind(":")].strip()
+            fields.append(name)
+            sort_orders[name] = "DESCENDING"
+        elif lower.endswith(":asc") or lower.endswith(":ascending"):
+            name = part[:part.rfind(":")].strip()
+            fields.append(name)
+            sort_orders[name] = "ASCENDING"
+        else:
+            fields.append(part)
+    return fields, sort_orders
+
+
 @app.command("pivot")
 def pivot_table(
     sheet_id: str = typer.Argument(..., help="Spreadsheet ID or URL"),
     source: str = typer.Option(..., "--source", "-s", help="Source range (e.g., Sheet1!A1:D100)"),
     target: str = typer.Option("Sheet1!F1", "--target", "-t", help="Target cell for pivot"),
-    rows: str = typer.Option(..., "--rows", "-r", help="Row fields (comma-separated column names)"),
-    cols: Optional[str] = typer.Option(None, "--cols", "-c", help="Column fields (comma-separated)"),
+    rows: str = typer.Option(..., "--rows", "-r", help="Row fields (name or name:asc/desc, comma-separated)"),
+    cols: Optional[str] = typer.Option(None, "--cols", "-c", help="Column fields (name or name:asc/desc)"),
     values: str = typer.Option(..., "--values", "-v", help="Value fields (func:field, e.g., sum:Sales,avg:Profit)"),
+    sort_by: Optional[str] = typer.Option(None, "--sort-by", help="Sort rows by value (func:field from --values)"),
+    filter_spec: Optional[str] = typer.Option(None, "--filter", help="Filter source data (Field:val1;val2, comma-separated)"),
+    display: Optional[str] = typer.Option(None, "--display", help="Value display: pct-row, pct-col, pct-total"),
+    layout: Optional[str] = typer.Option(None, "--layout", help="Value layout: horizontal or vertical"),
+    no_totals: bool = typer.Option(False, "--no-totals", help="Hide subtotals"),
+    date_group: Optional[str] = typer.Option(None, "--date-group", help="Date grouping (Field:type, e.g., Date:year_month)"),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Max rows/columns in pivot groups"),
 ) -> None:
     """Create a pivot table from source data.
 
     Aggregation functions: SUM, COUNT, AVERAGE, MAX, MIN, COUNTUNIQUE, MEDIAN, STDEV
 
     Examples:
-        gwark sheets pivot SHEET_ID -s "Data!A1:E100" -r "Category" -v "sum:Sales"
-        gwark sheets pivot SHEET_ID -s "Sales!A1:D500" -r "Region,Product" -c "Month" -v "sum:Revenue,avg:Profit"
-        gwark sheets pivot SHEET_ID -s "Data!A:E" -t "Pivot!A1" -r "Category" -v "count:ID"
+        gwark sheets pivot ID -s "Data!A1:E100" -r "Category" -v "sum:Sales"
+        gwark sheets pivot ID -s "Data!A:D" -r "Region:desc" -v "sum:Sales" --sort-by "sum:Sales"
+        gwark sheets pivot ID -s "Data!A:E" -r "Category" -v "sum:Sales" --filter "Region:East;West"
+        gwark sheets pivot ID -s "Data!A:E" -r "Category" -v "sum:Sales" --display pct-row
+        gwark sheets pivot ID -s "Data!A:E" -r "Category" -v "sum:Sales,avg:Profit" --layout vertical
+        gwark sheets pivot ID -s "Data!A:E" -r "Category" -v "sum:Sales" --no-totals --limit 10
+        gwark sheets pivot ID -s "Data!A:E" -r "Date" -v "sum:Sales" --date-group "Date:year_month"
     """
     print_header("gwark sheets pivot")
     print_info(f"Source: {source}")
     print_info(f"Target: {target}")
 
-    # Parse row fields
-    row_fields = [r.strip() for r in rows.split(",")]
+    # Parse row fields with optional sort direction
+    row_fields, row_sort_orders = _parse_fields_with_sort(rows)
     print_info(f"Row groupings: {', '.join(row_fields)}")
 
-    # Parse column fields
+    # Parse column fields with optional sort direction
     col_fields = None
+    col_sort_orders = {}
     if cols:
-        col_fields = [c.strip() for c in cols.split(",")]
+        col_fields, col_sort_orders = _parse_fields_with_sort(cols)
         print_info(f"Column groupings: {', '.join(col_fields)}")
 
     # Parse value fields (format: func:field)
@@ -679,11 +747,84 @@ def pivot_table(
             func, field = v.split(":", 1)
             value_specs.append({"field": field.strip(), "function": func.strip().upper()})
         else:
-            # Default to SUM if no function specified
             value_specs.append({"field": v, "function": "SUM"})
 
     value_strs = [f"{v['function']}({v['field']})" for v in value_specs]
     print_info(f"Values: {', '.join(value_strs)}")
+
+    # Parse --sort-by: match against value_specs
+    sort_by_value_idx = None
+    if sort_by:
+        sort_by_lower = sort_by.strip().lower()
+        for idx, vs in enumerate(value_specs):
+            candidate = f"{vs['function'].lower()}:{vs['field'].lower()}"
+            if sort_by_lower == candidate or sort_by_lower == vs["field"].lower():
+                sort_by_value_idx = idx
+                break
+        if sort_by_value_idx is None:
+            print_error(f"--sort-by '{sort_by}' does not match any --values entry")
+            available = ", ".join(f"{v['function'].lower()}:{v['field']}" for v in value_specs)
+            print_info(f"Available: {available}")
+            raise typer.Exit(EXIT_VALIDATION)
+        print_info(f"Sort by: {value_strs[sort_by_value_idx]}")
+
+    # Parse --filter
+    filters = None
+    if filter_spec:
+        filters = {}
+        for part in filter_spec.split(","):
+            part = part.strip()
+            if ":" not in part:
+                print_error(f"Invalid filter format: '{part}' (expected Field:val1;val2)")
+                raise typer.Exit(EXIT_VALIDATION)
+            field, vals = part.split(":", 1)
+            filters[field.strip()] = [v.strip() for v in vals.split(";")]
+        for f, vs in filters.items():
+            print_info(f"Filter: {f} = {', '.join(vs)}")
+
+    # Parse --display
+    value_display = None
+    if display:
+        value_display = _DISPLAY_MAP.get(display.lower())
+        if not value_display:
+            print_error(f"Invalid --display: '{display}'")
+            print_info(f"Options: {', '.join(_DISPLAY_MAP.keys())}")
+            raise typer.Exit(EXIT_VALIDATION)
+        print_info(f"Display: {display}")
+
+    # Parse --layout
+    value_layout = None
+    if layout:
+        layout_upper = layout.upper()
+        if layout_upper not in ("HORIZONTAL", "VERTICAL"):
+            print_error(f"Invalid --layout: '{layout}'. Use: horizontal, vertical")
+            raise typer.Exit(EXIT_VALIDATION)
+        value_layout = layout_upper
+        print_info(f"Layout: {layout}")
+
+    # Parse --date-group
+    date_groups = None
+    if date_group:
+        date_groups = {}
+        for part in date_group.split(","):
+            part = part.strip()
+            if ":" not in part:
+                print_error(f"Invalid --date-group: '{part}' (expected Field:type)")
+                raise typer.Exit(EXIT_VALIDATION)
+            field, dtype = part.split(":", 1)
+            mapped = _DATE_GROUP_MAP.get(dtype.strip().lower())
+            if not mapped:
+                print_error(f"Unknown date group type: '{dtype}'")
+                print_info(f"Options: {', '.join(_DATE_GROUP_MAP.keys())}")
+                raise typer.Exit(EXIT_VALIDATION)
+            date_groups[field.strip()] = mapped
+        for f, d in date_groups.items():
+            print_info(f"Date group: {f} by {d}")
+
+    if no_totals:
+        print_info("Subtotals: hidden")
+    if limit:
+        print_info(f"Group limit: {limit}")
 
     client = _get_client()
 
@@ -695,6 +836,15 @@ def pivot_table(
             rows=row_fields,
             columns=col_fields,
             values=value_specs,
+            row_sort_orders=row_sort_orders or None,
+            col_sort_orders=col_sort_orders or None,
+            sort_by_value=sort_by_value_idx,
+            filters=filters,
+            value_display=value_display,
+            value_layout=value_layout,
+            show_totals=not no_totals,
+            date_groups=date_groups,
+            group_limit=limit,
         )
 
         print_success(f"Created pivot table at {target}")
