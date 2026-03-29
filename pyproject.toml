@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gwark"
-version = "0.2.0"
+version = "0.3.0"
 description = "A robust Gmail integration for Model Context Protocol with support for large email volumes"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -182,3 +182,6 @@ env-key = ""
 api-url = "https://console.cloud.google.com/apis/credentials"
 system-deps = []
 setup-notes = "Requires Google OAuth2 credentials -- run 'gwark auth login' to authenticate"
+
+[tool.uv]
+exclude-newer = "7 days"
