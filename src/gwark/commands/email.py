@@ -15,7 +15,7 @@ sys.path.insert(0, str(project_root))
 
 from gwark.core.config import load_config, get_profile
 from gwark.core.dates import date_to_gmail_query, format_short_date
-from gwark.core.email_utils import extract_email_details, extract_name, build_gmail_query
+from gwark.core.email_utils import extract_email_details, extract_name, extract_email_address, build_gmail_query
 from gwark.core.constants import (
     EXIT_ERROR,
     EXIT_AUTH_REQUIRED,
@@ -537,3 +537,321 @@ def _summarize_interactive(
     console.print(f"\n[yellow]Save as: [bold]{report_name}[/bold][/yellow]\n")
 
 
+@app.command()
+def senders(
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Search by sender name (partial match)"),
+    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Search by sender domain"),
+    sender: Optional[str] = typer.Option(None, "--sender", "-s", help="Search by sender email address"),
+    query: Optional[str] = typer.Option(None, "--query", "-q", help="Raw Gmail query"),
+    days: int = typer.Option(365, "--days", help="Days to look back (default: 365)"),
+    max_results: int = typer.Option(500, "--max-results", "-m", help="Maximum emails to scan"),
+    output_format: str = typer.Option("markdown", "--format", "-f", help="Output format: json, csv, markdown"),
+    enrich: bool = typer.Option(False, "--enrich", "-e", help="Enrich with Google Contacts status"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
+) -> None:
+    """Find unique senders from emails matching a search.
+
+    Searches by name (From header display name), email address, or domain,
+    then groups results by unique sender.
+
+    Examples:
+        gwark email senders --name "nevill"
+        gwark email senders --domain example.com --days 90
+        gwark email senders --sender john@ --enrich
+        gwark email senders --query "from:nevill OR from:neville"
+    """
+    asyncio.run(_senders_async(
+        name=name,
+        domain=domain,
+        sender=sender,
+        query=query,
+        days=days,
+        max_results=max_results,
+        output_format=output_format,
+        enrich=enrich,
+        output=output,
+    ))
+
+
+async def _senders_async(
+    name: Optional[str],
+    domain: Optional[str],
+    sender: Optional[str],
+    query: Optional[str],
+    days: int,
+    max_results: int,
+    output_format: str,
+    enrich: bool,
+    output: Optional[Path],
+) -> None:
+    """Async implementation of unique senders extraction."""
+    from collections import defaultdict
+
+    config = load_config()
+
+    print_header("gwark email senders")
+
+    # Build Gmail query - name search uses from: which matches display names too
+    if query:
+        gmail_query = query
+    else:
+        parts = []
+        if name:
+            # Gmail from: matches both display names and email addresses
+            parts.append(f'from:"{name}"')
+        if domain:
+            parts.append(f"from:@{domain}")
+        if sender:
+            parts.append(f"from:{sender}")
+
+        if not parts:
+            print_error("Provide at least one of: --name, --domain, --sender, or --query")
+            raise typer.Exit(EXIT_VALIDATION)
+
+        after_date = date_to_gmail_query(datetime.now() - timedelta(days=days))
+        parts.append(f"after:{after_date}")
+        gmail_query = " ".join(parts)
+
+    print_info(f"Query: {gmail_query}")
+    print_info(f"Scanning up to {max_results} emails over last {days} days")
+
+    try:
+        from gmail_mcp.auth import get_gmail_service
+        service = get_gmail_service()
+
+        # Search for messages (metadata only - we just need From headers)
+        messages = []
+        page_token = None
+
+        while True:
+            results = retry_execute(
+                service.users().messages().list(
+                    userId="me",
+                    q=gmail_query,
+                    maxResults=min(500, max_results - len(messages)),
+                    pageToken=page_token,
+                ),
+                operation="Search emails",
+            )
+
+            messages.extend(results.get("messages", []))
+            page_token = results.get("nextPageToken")
+
+            if not page_token or len(messages) >= max_results:
+                break
+
+            print_info(f"Fetched {len(messages)} message IDs...")
+
+        messages = messages[:max_results]
+
+        if not messages:
+            print_info("No emails found matching criteria.")
+            return
+
+        print_success(f"Found {len(messages)} emails, extracting senders...")
+
+        # Batch fetch metadata only (lightweight - just headers)
+        from gwark.core.batch_fetch import fetch_emails_batch
+        from gwark.ui.progress import FetchProgress
+
+        message_ids = [m["id"] for m in messages]
+
+        with FetchProgress(len(message_ids), "Fetching headers") as progress:
+            result = fetch_emails_batch(
+                message_ids,
+                detail_level="summary",
+                progress_callback=lambda done, total: progress.update(done),
+            )
+            emails = result.emails
+
+        if not emails:
+            print_error("Failed to fetch email details")
+            raise typer.Exit(EXIT_ERROR)
+
+        # Aggregate unique senders
+        sender_map = defaultdict(lambda: {
+            "name": "",
+            "email": "",
+            "count": 0,
+            "first_seen": None,
+            "last_seen": None,
+            "subjects": [],
+        })
+
+        for email in emails:
+            from_raw = email.get("from", "")
+            email_addr = extract_email_address(from_raw).lower()
+            display_name = extract_name(from_raw)
+            timestamp = email.get("date_timestamp", 0)
+            subject = email.get("subject", "")
+
+            if not email_addr:
+                continue
+
+            entry = sender_map[email_addr]
+            # Keep the longest/best display name we find
+            if len(display_name) > len(entry["name"]):
+                entry["name"] = display_name
+            entry["email"] = email_addr
+            entry["count"] += 1
+
+            if entry["first_seen"] is None or timestamp < entry["first_seen"]:
+                entry["first_seen"] = timestamp
+            if entry["last_seen"] is None or timestamp > entry["last_seen"]:
+                entry["last_seen"] = timestamp
+
+            # Keep last 3 subjects for context
+            if len(entry["subjects"]) < 3:
+                entry["subjects"].append(subject)
+
+        # Sort by count descending, then by last_seen descending
+        unique_senders = sorted(
+            sender_map.values(),
+            key=lambda s: (s["count"], s["last_seen"] or 0),
+            reverse=True,
+        )
+
+        print_success(f"Found {len(unique_senders)} unique senders")
+
+        # Optional: enrich with Google Contacts status
+        if enrich:
+            try:
+                from gmail_mcp.auth import get_people_service
+                from gmail_mcp.ai.sender_signals import (
+                    load_contacts_cache,
+                    fetch_contact_emails,
+                    fetch_other_contacts,
+                    save_contacts_cache,
+                )
+
+                print_info("Enriching with contact status...")
+                cache = load_contacts_cache()
+                if cache and cache.get("my_contacts"):
+                    my_contacts = set(cache.get("my_contacts", []))
+                    other_contacts = set(cache.get("other_contacts", []))
+                else:
+                    people_service = get_people_service()
+                    my_contacts = fetch_contact_emails(people_service)
+                    other_contacts = fetch_other_contacts(people_service)
+                    if my_contacts or other_contacts:
+                        save_contacts_cache(my_contacts, other_contacts)
+
+                for s in unique_senders:
+                    addr = s["email"]
+                    if addr in my_contacts:
+                        s["contact_status"] = "known"
+                    elif addr in other_contacts:
+                        s["contact_status"] = "prior"
+                    else:
+                        s["contact_status"] = "unknown"
+
+                print_success("Contact enrichment complete")
+            except Exception as e:
+                print_error(f"Contact enrichment failed: {e}")
+                print_info("Results will be shown without contact status")
+
+        # Format output
+        formatter = OutputFormatter(output_dir=config.defaults.output_directory)
+
+        if output_format == "json":
+            import json
+            # Convert timestamps to ISO dates for JSON
+            for s in unique_senders:
+                s["first_seen"] = _timestamp_to_date(s["first_seen"])
+                s["last_seen"] = _timestamp_to_date(s["last_seen"])
+            content = json.dumps(unique_senders, indent=2, default=str)
+            ext = "json"
+        elif output_format == "csv":
+            content = _format_senders_csv(unique_senders, enrich)
+            ext = "csv"
+        else:
+            content = _format_senders_markdown(unique_senders, enrich, gmail_query, days)
+            ext = "md"
+
+        prefix = f"senders_{name or domain or 'search'}"
+        output_path = formatter.save(content, prefix, ext, output)
+        print_success(f"Saved to: {output_path}")
+
+    except ImportError as e:
+        print_error(f"Missing dependency: {e}")
+        raise typer.Exit(EXIT_ERROR)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(f"Sender search failed: {e}")
+        raise typer.Exit(EXIT_ERROR)
+
+
+def _timestamp_to_date(ts: Optional[int]) -> str:
+    """Convert Unix timestamp to date string."""
+    if not ts:
+        return ""
+    try:
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+    except (ValueError, OSError):
+        return ""
+
+
+def _format_senders_markdown(
+    senders: list,
+    enrich: bool,
+    query: str,
+    days: int,
+) -> str:
+    """Format unique senders as markdown table."""
+    lines = []
+    lines.append("# Unique Senders\n")
+    lines.append(f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*")
+    lines.append(f"*Query: {query} | Last {days} days | {len(senders)} unique senders*\n")
+
+    if enrich:
+        lines.append("| Name | Email | Count | Last Seen | Contact | Recent Subjects |")
+        lines.append("|------|-------|------:|-----------|---------|-----------------|")
+    else:
+        lines.append("| Name | Email | Count | Last Seen | Recent Subjects |")
+        lines.append("|------|-------|------:|-----------|-----------------|")
+
+    for s in senders:
+        name = s["name"]
+        email = s["email"]
+        count = s["count"]
+        last_seen = _timestamp_to_date(s["last_seen"])
+        subjects = "; ".join(sub[:40] for sub in s["subjects"]).replace("|", "\\|")
+
+        if enrich:
+            contact = s.get("contact_status", "")
+            lines.append(f"| {name} | {email} | {count} | {last_seen} | {contact} | {subjects} |")
+        else:
+            lines.append(f"| {name} | {email} | {count} | {last_seen} | {subjects} |")
+
+    return "\n".join(lines)
+
+
+def _format_senders_csv(senders: list, enrich: bool) -> str:
+    """Format unique senders as CSV."""
+    import csv
+    from io import StringIO
+
+    output = StringIO()
+    fields = ["name", "email", "count", "first_seen", "last_seen"]
+    if enrich:
+        fields.append("contact_status")
+    fields.append("recent_subjects")
+
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+
+    for s in senders:
+        row = {
+            "name": s["name"],
+            "email": s["email"],
+            "count": s["count"],
+            "first_seen": _timestamp_to_date(s["first_seen"]),
+            "last_seen": _timestamp_to_date(s["last_seen"]),
+            "recent_subjects": "; ".join(s["subjects"]),
+        }
+        if enrich:
+            row["contact_status"] = s.get("contact_status", "")
+        writer.writerow(row)
+
+    return output.getvalue()

@@ -114,9 +114,22 @@ def get_google_service(
     creds: Optional[Credentials] = None
     gwark_dir: Path = get_gwark_dir()
     migrated = False
+    force_consent = False
 
     # 1. Try keyring (primary)
     creds = store.load_google_credentials(svc_key)
+
+    # Verify stored scopes cover requested scopes
+    if creds and creds.scopes:
+        required = set(scopes)
+        stored = set(creds.scopes)
+        if not required.issubset(stored):
+            missing = required - stored
+            print(f"[INFO] Stored {svc_key} token missing scopes: {missing}")
+            print(f"[INFO] Re-authenticating to get required scopes...")
+            store.delete_google_credentials(svc_key)
+            creds = None
+            force_consent = True  # Must force consent to get new scopes
 
     # 2. Try legacy encrypted token
     if not creds:
@@ -173,7 +186,10 @@ def get_google_service(
 
         print(f"[INFO] Starting OAuth2 authentication flow for {svc_key}...")
         flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), scopes)
-        creds = flow.run_local_server(port=0)
+        flow_kwargs = {"port": 0}
+        if force_consent:
+            flow_kwargs["prompt"] = "consent"
+        creds = flow.run_local_server(**flow_kwargs)
         migrated = True
 
     # Save to keyring (migration or new auth)
