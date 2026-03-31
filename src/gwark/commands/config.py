@@ -317,8 +317,17 @@ def auth_setup(
 
 
 @auth_app.command("test")
-def auth_test() -> None:
-    """Test OAuth2 connection."""
+def auth_test(
+    all_apis: bool = typer.Option(False, "--all", "-a", help="Test all Google APIs (not just Gmail)"),
+) -> None:
+    """Test OAuth2 connection and API availability.
+
+    By default, tests Gmail only. Use --all to check every API gwark uses.
+
+    Examples:
+        gwark config auth test          # Quick Gmail check
+        gwark config auth test --all    # Full preflight check
+    """
     print_header("gwark config auth test")
 
     try:
@@ -329,14 +338,236 @@ def auth_test() -> None:
         service = get_gmail_service()
         profile = service.users().getProfile(userId="me").execute()
 
-        print_success("Connection successful!")
+        print_success("Gmail API connected")
         print_info(f"Email: {profile.get('emailAddress')}")
-        print_info(f"Total messages: {profile.get('messagesTotal')}")
-        print_info(f"Total threads: {profile.get('threadsTotal')}")
+        print_info(f"Messages: {profile.get('messagesTotal')}")
 
     except Exception as e:
-        print_error(f"Connection failed: {e}")
+        print_error(f"Gmail connection failed: {e}")
+        print_info("Run: gwark config auth setup")
         raise typer.Exit(EXIT_ERROR)
+
+    if not all_apis:
+        print_info("Use --all to test all Google APIs")
+        return
+
+    # Full preflight check
+    _preflight_check_all()
+
+
+# Google Cloud Console enable URLs for each API
+_API_ENABLE_URLS = {
+    "Gmail": "https://console.cloud.google.com/apis/library/gmail.googleapis.com",
+    "Calendar": "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com",
+    "Drive": "https://console.cloud.google.com/apis/library/drive.googleapis.com",
+    "Docs": "https://console.cloud.google.com/apis/library/docs.googleapis.com",
+    "Sheets": "https://console.cloud.google.com/apis/library/sheets.googleapis.com",
+    "Slides": "https://console.cloud.google.com/apis/library/slides.googleapis.com",
+    "Forms": "https://console.cloud.google.com/apis/library/forms.googleapis.com",
+    "People": "https://console.cloud.google.com/apis/library/people.googleapis.com",
+}
+
+
+def _preflight_check_all() -> None:
+    """Test all Google APIs used by gwark."""
+    from rich.table import Table
+
+    console_out = Console(stderr=True)
+
+    # Define checks: (name, get_service_func, test_call, required)
+    checks = [
+        ("Calendar", "_check_calendar", True),
+        ("Drive", "_check_drive", True),
+        ("Docs", "_check_docs", False),
+        ("Sheets", "_check_sheets", False),
+        ("Slides", "_check_slides", False),
+        ("Forms", "_check_forms", False),
+        ("People", "_check_people", False),
+    ]
+
+    results = []
+    for api_name, check_func, required in checks:
+        status, detail = globals()[check_func]()
+        results.append((api_name, status, detail, required))
+
+    # Display results table
+    table = Table(title="API Preflight Check", show_header=True, header_style="bold")
+    table.add_column("API", style="cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Detail")
+    table.add_column("Action")
+
+    passed = 0
+    failed = 0
+    skipped = 0
+
+    for api_name, status, detail, required in results:
+        if status == "ok":
+            status_str = "[green]OK[/green]"
+            action = ""
+            passed += 1
+        elif status == "disabled":
+            status_str = "[red]DISABLED[/red]" if required else "[yellow]DISABLED[/yellow]"
+            action = f"[link={_API_ENABLE_URLS.get(api_name, '')}]Enable API[/link]"
+            failed += 1
+        elif status == "no_token":
+            status_str = "[dim]NO TOKEN[/dim]"
+            action = f"Run: gwark {api_name.lower()} ... (auto-authenticates)"
+            skipped += 1
+        else:
+            status_str = "[red]ERROR[/red]"
+            action = detail
+            failed += 1
+
+        table.add_row(api_name, status_str, detail[:60], action)
+
+    console_out.print()
+    console_out.print(table)
+    console_out.print()
+
+    # Summary
+    total = passed + failed + skipped
+    if failed == 0:
+        print_success(f"All APIs ready ({passed} ok, {skipped} not yet authenticated)")
+    else:
+        print_warning(f"{failed} API(s) need attention ({passed} ok, {skipped} not yet authenticated)")
+        console_out.print()
+        console_out.print("[bold]To enable a disabled API:[/bold]")
+        console_out.print("  1. Click the 'Enable API' link above (or copy the URL)")
+        console_out.print("  2. Click 'Enable' in Google Cloud Console")
+        console_out.print("  3. Wait 1-2 minutes, then re-run: gwark config auth test --all")
+
+
+def _check_api(svc_key, get_service_fn, test_fn):
+    """Generic API check: get service, run test call, return (status, detail)."""
+    from gmail_mcp.auth.oauth import has_credentials
+    from googleapiclient.errors import HttpError
+
+    # Check if token exists before triggering OAuth browser flow
+    if not has_credentials(svc_key):
+        return "no_token", "Not authenticated yet"
+
+    try:
+        service = get_service_fn()
+    except SystemExit:
+        return "no_token", "Not authenticated yet"
+    except Exception as e:
+        return "error", str(e)[:80]
+
+    try:
+        test_fn(service)
+        return "ok", "Connected"
+    except HttpError as e:
+        msg = str(e)
+        if "not been used in project" in msg or "is disabled" in msg:
+            return "disabled", "API not enabled in Google Cloud project"
+        if "REQUEST_DENIED" in msg:
+            return "disabled", "API access denied"
+        return "error", e.reason[:80] if hasattr(e, 'reason') else str(e)[:80]
+    except Exception as e:
+        return "error", str(e)[:80]
+
+
+def _check_calendar():
+    from gmail_mcp.auth import get_calendar_service
+    return _check_api(
+        "calendar", get_calendar_service,
+        lambda svc: svc.calendarList().list(maxResults=1).execute(),
+    )
+
+
+def _check_drive():
+    from gmail_mcp.auth import get_drive_service
+    return _check_api(
+        "drive", get_drive_service,
+        lambda svc: svc.files().list(pageSize=1, fields="files(id)").execute(),
+    )
+
+
+def _check_docs():
+    from gmail_mcp.auth import get_docs_service
+    return _check_api(
+        "docs", get_docs_service,
+        lambda svc: _check_docs_api(svc),
+    )
+
+
+def _check_docs_api(docs_service):
+    """Check if Docs API is enabled by attempting to get a non-existent doc."""
+    from googleapiclient.errors import HttpError
+    try:
+        docs_service.documents().get(documentId="test_nonexistent").execute()
+    except HttpError as e:
+        if e.resp.status == 404:
+            return  # 404 means API is enabled, doc just doesn't exist
+        raise  # Re-raise 403 (disabled) or other errors
+
+
+def _check_sheets():
+    from gmail_mcp.auth.oauth import has_credentials
+    if not has_credentials("sheets"):
+        return "no_token", "Not authenticated yet"
+
+    from gmail_mcp.auth import get_sheets_client
+    try:
+        client = get_sheets_client()
+        client.list_spreadsheet_files()
+        return "ok", "Connected"
+    except SystemExit:
+        return "no_token", "Not authenticated yet"
+    except Exception as e:
+        msg = str(e)
+        if "not been used" in msg or "is disabled" in msg:
+            return "disabled", "API not enabled in Google Cloud project"
+        return "error", str(e)[:80]
+
+
+def _check_slides():
+    from gmail_mcp.auth import get_slides_service
+    return _check_api(
+        "slides", get_slides_service,
+        lambda svc: _check_slides_api(svc),
+    )
+
+
+def _check_slides_api(slides_service):
+    """Check if Slides API is enabled by attempting to get a non-existent presentation."""
+    from googleapiclient.errors import HttpError
+    try:
+        slides_service.presentations().get(presentationId="test_nonexistent").execute()
+    except HttpError as e:
+        if e.resp.status == 404:
+            return  # API enabled, presentation doesn't exist
+        raise
+
+
+def _check_forms():
+    from gmail_mcp.auth import get_forms_service
+    return _check_api(
+        "forms", get_forms_service,
+        lambda svc: _check_forms_api(svc),
+    )
+
+
+def _check_forms_api(forms_service):
+    """Check if Forms API is enabled by attempting to get a non-existent form."""
+    from googleapiclient.errors import HttpError
+    try:
+        forms_service.forms().get(formId="test_nonexistent").execute()
+    except HttpError as e:
+        if e.resp.status == 404:
+            return  # API enabled, form doesn't exist
+        raise
+
+
+def _check_people():
+    from gmail_mcp.auth import get_people_service
+    return _check_api(
+        "people", get_people_service,
+        lambda svc: svc.people().connections().list(
+            resourceName="people/me", pageSize=1, personFields="names"
+        ).execute(),
+    )
 
 
 @auth_app.command("list")
