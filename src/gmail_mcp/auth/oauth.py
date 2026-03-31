@@ -86,6 +86,17 @@ def _try_load_encrypted_token(gwark_dir: Path, account_id: str = "primary") -> O
         return None
 
 
+def _scopes_sufficient(creds: Credentials, required_scopes: List[str]) -> bool:
+    """Check if credentials have all required scopes."""
+    if not creds.scopes:
+        return True  # No scope info stored — assume sufficient (legacy tokens)
+    # Coerce to list in case scopes is a space-separated string
+    stored = creds.scopes
+    if isinstance(stored, str):
+        stored = stored.split()
+    return set(required_scopes).issubset(set(stored))
+
+
 def get_google_service(
     service_name: str,
     version: str,
@@ -120,28 +131,32 @@ def get_google_service(
     creds = store.load_google_credentials(svc_key)
 
     # Verify stored scopes cover requested scopes
-    if creds and creds.scopes:
-        required = set(scopes)
-        stored = set(creds.scopes)
-        if not required.issubset(stored):
-            missing = required - stored
-            print(f"[INFO] Stored {svc_key} token missing scopes: {missing}")
-            print(f"[INFO] Re-authenticating to get required scopes...")
-            store.delete_google_credentials(svc_key)
-            creds = None
-            force_consent = True  # Must force consent to get new scopes
+    if creds and not _scopes_sufficient(creds, scopes):
+        print(f"[INFO] Stored {svc_key} token missing required scopes")
+        print(f"[INFO] Re-authenticating to get required scopes...")
+        store.delete_google_credentials(svc_key)
+        creds = None
+        force_consent = True  # Must force consent to get new scopes
 
     # 2. Try legacy encrypted token
     if not creds:
         creds = _try_load_encrypted_token(gwark_dir)
         if creds:
-            migrated = True
+            if not _scopes_sufficient(creds, scopes):
+                creds = None
+                force_consent = True
+            else:
+                migrated = True
 
     # 3. Try legacy pickle
     if not creds:
         creds = _try_load_legacy_pickle(gwark_dir, token_filename)
         if creds:
-            migrated = True
+            if not _scopes_sufficient(creds, scopes):
+                creds = None
+                force_consent = True
+            else:
+                migrated = True
 
     # Refresh if expired
     if creds and not creds.valid:

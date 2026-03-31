@@ -598,7 +598,8 @@ async def _senders_async(
         parts = []
         if name:
             # Gmail from: matches both display names and email addresses
-            parts.append(f'from:"{name}"')
+            safe_name = name.replace('"', '')
+            parts.append(f'from:"{safe_name}"')
         if domain:
             parts.append(f"from:@{domain}")
         if sender:
@@ -681,12 +682,15 @@ async def _senders_async(
         for email in emails:
             from_raw = email.get("from", "")
             email_addr = extract_email_address(from_raw).lower()
-            display_name = extract_name(from_raw)
-            timestamp = email.get("date_timestamp", 0)
-            subject = email.get("subject", "")
-
             if not email_addr:
                 continue
+
+            display_name = extract_name(from_raw)
+            # Fall back to email address instead of "Unknown"
+            if display_name == "Unknown":
+                display_name = email_addr
+            timestamp = email.get("date_timestamp") or None
+            subject = email.get("subject", "")
 
             entry = sender_map[email_addr]
             # Keep the longest/best display name we find
@@ -695,13 +699,14 @@ async def _senders_async(
             entry["email"] = email_addr
             entry["count"] += 1
 
-            if entry["first_seen"] is None or timestamp < entry["first_seen"]:
-                entry["first_seen"] = timestamp
-            if entry["last_seen"] is None or timestamp > entry["last_seen"]:
-                entry["last_seen"] = timestamp
+            if timestamp is not None:
+                if entry["first_seen"] is None or timestamp < entry["first_seen"]:
+                    entry["first_seen"] = timestamp
+                if entry["last_seen"] is None or timestamp > entry["last_seen"]:
+                    entry["last_seen"] = timestamp
 
-            # Keep last 3 subjects for context
-            if len(entry["subjects"]) < 3:
+            # Keep last 3 unique subjects for context
+            if len(entry["subjects"]) < 3 and subject not in entry["subjects"]:
                 entry["subjects"].append(subject)
 
         # Sort by count descending, then by last_seen descending
@@ -768,7 +773,7 @@ async def _senders_async(
             content = _format_senders_markdown(unique_senders, enrich, gmail_query, days)
             ext = "md"
 
-        prefix = f"senders_{name or domain or 'search'}"
+        prefix = f"senders_{name or domain or sender or 'search'}"
         output_path = formatter.save(content, prefix, ext, output)
         print_success(f"Saved to: {output_path}")
 
@@ -782,12 +787,18 @@ async def _senders_async(
         raise typer.Exit(EXIT_ERROR)
 
 
+def _escape_md(value: str) -> str:
+    """Escape value for use in markdown table cell."""
+    return value.replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
+
 def _timestamp_to_date(ts: Optional[int]) -> str:
-    """Convert Unix timestamp to date string."""
-    if not ts:
+    """Convert Unix timestamp to UTC date string."""
+    if ts is None:
         return ""
     try:
-        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+        from datetime import timezone
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
     except (ValueError, OSError):
         return ""
 
@@ -812,8 +823,8 @@ def _format_senders_markdown(
         lines.append("|------|-------|------:|-----------|-----------------|")
 
     for s in senders:
-        name = s["name"]
-        email = s["email"]
+        name = _escape_md(s["name"])
+        email = _escape_md(s["email"])
         count = s["count"]
         last_seen = _timestamp_to_date(s["last_seen"])
         subjects = "; ".join(sub[:40] for sub in s["subjects"]).replace("|", "\\|")

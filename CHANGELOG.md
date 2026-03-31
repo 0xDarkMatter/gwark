@@ -11,8 +11,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 - OAuth scope validation — auto-detects mismatched scopes and re-authenticates
 
 ### Fixed
-- OAuth re-auth now forces consent prompt only when scopes need upgrading
+- OAuth scope validation: detect mismatched scopes in keyring and legacy tokens, force consent only when needed
+- Scope type coercion handles string-format scopes from older OAuth flows
+- Name fallback uses email address instead of "Unknown" for senders without display names
+- Timestamps use UTC to prevent date shift near midnight in non-UTC timezones
+- Markdown table escaping for pipe characters and newlines in sender names
+- Deduplicate subjects in sender aggregation (no repeated "Re: Invoice" entries)
+- Quote-safe `--name` search strips internal double-quotes before Gmail query
 - Empty contacts cache no longer poisons subsequent enrichment attempts
+
+### Removed
+- `setup.py` (obsolete — pyproject.toml handles all builds)
 
 ## [0.2.0] - 2026-03-17
 
