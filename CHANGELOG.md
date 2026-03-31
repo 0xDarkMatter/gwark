@@ -62,7 +62,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 - Add polished interactive viewers for email, calendar, and drive
 - Add Textual UI components for enhanced CLI experience
 - Add gwark CLI for unified Google Workspace operations
-- Add Cloudflare Workers MCP server and project documentation
 - Add API efficiency improvements and code refactoring
 - Add AI-powered email summarization using Claude Haiku
 - Add --show-preview flag for email snippet display in summary tables
