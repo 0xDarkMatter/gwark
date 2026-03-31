@@ -1,4 +1,4 @@
-"""Gmail MCP Server - A robust Gmail integration for Model Context Protocol."""
+"""gmail_mcp - Core Google API library for gwark."""
 
-__version__ = "0.1.0"
-__author__ = "Gmail MCP Team"
+__version__ = "0.3.1"
+__author__ = "gwark"
