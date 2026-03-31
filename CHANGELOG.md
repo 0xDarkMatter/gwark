@@ -3,6 +3,20 @@
 All notable changes to this tool are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/)
 
+## [0.3.1] - 2026-03-31
+
+### Added
+- `gwark config auth test --all` — preflight check for all Google APIs with status table and enable URLs
+- `has_credentials()` helper to check token existence without triggering OAuth browser flow
+
+### Changed
+- Rewrite docs (SETUP, QUICKSTART, OAUTH_SETUP) for gwark CLI
+- Update command help strings to reflect all available subcommands
+- Add Required APIs table to README with Google Cloud Console enable links
+
+### Removed
+- Internal docs not suited for public release (PLAN, ROADMAP, GOOGLE_API_THREADING, TRIAGE_WORKFLOW)
+
 ## [0.3.0] - 2026-03-29
 
 ### Added
