@@ -1,285 +1,196 @@
 # Setup Guide
 
-Complete guide to installing and configuring the Gmail MCP Server.
+Complete guide to installing and configuring gwark.
 
 ## Prerequisites
 
 - Python 3.10 or higher
-- Gmail account
+- Google account (personal or Workspace)
 - Google Cloud Platform account (free tier is sufficient)
 
-## Installation Steps
+## Installation
 
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/yourusername/gmail-mcp.git
-cd gmail-mcp
-```
-
-### 2. Create Virtual Environment (Recommended)
+### 1. Clone and Install
 
 ```bash
-# Create virtual environment
-python -m venv venv
+git clone https://github.com/yourusername/gwark.git
+cd gwark
 
-# Activate (Windows)
-venv\Scripts\activate
+# Install with uv (recommended — 10-100x faster)
+uv pip install -e .
 
-# Activate (macOS/Linux)
-source venv/bin/activate
-```
-
-### 3. Install Dependencies
-
-```bash
-# Install in editable mode
+# Or with standard pip
 pip install -e .
-
-# Or with development dependencies
-pip install -e ".[dev]"
 ```
 
-### 4. Google Cloud Setup
+### 2. Google Cloud Setup
 
 See [OAUTH_SETUP.md](OAUTH_SETUP.md) for detailed Google Cloud Console configuration.
 
 Quick steps:
+
 1. Create a Google Cloud project
-2. Enable Gmail API
-3. Create OAuth2 credentials (Desktop App)
+2. Enable APIs: Gmail, Calendar, Drive, Docs, Sheets, Slides, Forms
+3. Create OAuth2 credentials (Desktop App type)
 4. Download credentials JSON
 5. Save as `.gwark/credentials/oauth2_credentials.json`
 
-### 5. Configure Environment
+### 3. Initialize Configuration
 
 ```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env with your preferred settings
-# Most defaults work well for typical usage
+# Create .gwark/ directory with default config and profiles
+gwark config init
 ```
 
-### 6. Authenticate
+This creates:
+
+```
+.gwark/
+├── config.yaml          # Main settings
+├── credentials/         # Place OAuth2 credentials here
+│   └── oauth2_credentials.json
+├── tokens/              # OAuth tokens (auto-created on first auth)
+└── profiles/
+    ├── default.yaml     # Default profile (no filters)
+    └── work.yaml        # Work-only filters
+```
+
+### 4. Authenticate
 
 ```bash
-# Run OAuth2 setup script
-python scripts/setup_oauth.py
-
-# This will:
-# 1. Open a browser for Google authentication
-# 2. Request necessary permissions
-# 3. Save encrypted tokens to .gwark/tokens/
+# Set up OAuth (opens browser for Google sign-in)
+gwark config auth setup
 ```
 
-### 7. Test the Setup
+This authenticates the Gmail API. Other services (Calendar, Drive, Sheets, etc.) authenticate on first use — gwark will open a browser prompt automatically.
+
+### 5. Test Connection
 
 ```bash
-# Test Gmail API connection
-python scripts/test_connection.py
+# Verify authentication works
+gwark config auth test
 
-# This verifies:
-# - OAuth2 credentials are valid
-# - Gmail API is accessible
-# - Basic operations work
+# Quick functional test
+gwark email search --domain gmail.com --days 1 --max-results 3
 ```
 
-### 8. Run the Server
+## Configuration
 
-```bash
-# Run as a module
-python -m gmail_mcp
+### Main Config
 
-# Or use the installed command
-gmail-mcp
+Edit `.gwark/config.yaml`:
+
+```yaml
+defaults:
+  days_back: 30
+  max_results: 500
+  output_directory: reports
+  output_format: markdown
 ```
 
-## Configuration Options
+### Profiles
+
+Profiles filter content for different contexts (work vs personal):
+
+```yaml
+# .gwark/profiles/work.yaml
+filters:
+  email:
+    exclude_senders:
+      - no-reply@
+      - notifications@
+    exclude_subjects:
+      - "Out of Office"
+  calendar:
+    work_only: true
+    exclude_keywords:
+      - personal
+      - dentist
+```
+
+Use with any command: `gwark email search --domain company.com --profile work`
 
 ### Environment Variables
 
-Create a `.env` file in the project root:
+Optional `.env` file for AI features:
 
 ```env
+# AI Summarization (optional — requires Anthropic API key)
+ANTHROPIC_API_KEY=sk-ant-...
+
 # Logging
 LOG_LEVEL=INFO
-
-# Cache
-CACHE_ENABLED=true
-CACHE_TTL_SECONDS=3600
-MAX_CACHE_SIZE_MB=500
-
-# Gmail API
-DEFAULT_PAGE_SIZE=100
-MAX_BATCH_SIZE=50
-MAX_RESULTS_PER_SEARCH=500
-
-# Rate Limiting
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_PER_SECOND=10
-RATE_LIMIT_BURST=20
-
-# Multi-Account
-DEFAULT_ACCOUNT_ID=primary
-MAX_ACCOUNTS=5
 ```
 
-### YAML Configuration
+## API Rate Limits
 
-For advanced configuration, edit `config/server_config.yaml`:
+gwark is optimized for Google Workspace accounts:
 
-```yaml
-server:
-  name: "Gmail MCP Server"
-  version: "0.1.0"
-
-logging:
-  level: "INFO"
-  file: "logs/gmail_mcp.log"
-
-oauth2:
-  credentials_path: ".gwark/credentials/oauth2_credentials.json"
-  scopes:
-    - "https://www.googleapis.com/auth/gmail.readonly"
-    - "https://www.googleapis.com/auth/gmail.modify"
-    - "https://www.googleapis.com/auth/gmail.labels"
-
-cache:
-  enabled: true
-  database_path: "data/cache/email_cache.db"
-  ttl_seconds: 3600
-```
-
-## MCP Client Integration
-
-### Claude Desktop
-
-Add to your Claude Desktop configuration:
-
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "gmail": {
-      "command": "python",
-      "args": ["-m", "gmail_mcp"],
-      "cwd": "E:\\Projects\\Coding\\GmailMCP"
-    }
-  }
-}
-```
-
-### Other MCP Clients
-
-The server uses stdio transport and follows the MCP specification. Any compliant MCP client should work.
-
-## Multi-Account Setup
-
-### Add Additional Accounts
-
-```bash
-# Run OAuth2 setup with account ID
-python scripts/setup_oauth.py --account-id work
-
-# This creates a separate token for "work" account
-# You can have up to 5 accounts (configurable)
-```
-
-### Use in Requests
-
-```json
-{
-  "query": "is:unread",
-  "account_id": "work"
-}
-```
+| Limit | Value |
+|-------|-------|
+| Per-user quota | 15,000 queries/min (250/sec) |
+| Default concurrent ops | 10 |
+| Configurable max | 50 concurrent |
 
 ## Directory Structure
 
-After setup, your directory should look like:
+After setup, your project looks like:
 
 ```
-GmailMCP/
-├── config/
-│   ├── oauth2_credentials.json  # Your OAuth2 credentials
-│   └── server_config.yaml       # Optional custom config
-├── data/
+gwark/
+├── src/
+│   ├── gwark/              # CLI tool
+│   │   ├── commands/       # Command modules
+│   │   ├── core/           # Utilities
+│   │   └── schemas/        # Config models
+│   └── gmail_mcp/          # Core library (OAuth, API clients)
+├── .gwark/                 # Runtime config (gitignored)
+│   ├── config.yaml
+│   ├── credentials/
 │   ├── tokens/
-│   │   └── primary.token        # Encrypted OAuth2 tokens
-│   └── cache/
-│       └── email_cache.db       # SQLite cache
-├── logs/
-│   └── gmail_mcp.log            # Server logs
-└── .env                         # Environment variables
-```
-
-## Verification
-
-### Check Authentication
-
-```bash
-python -c "from gmail_mcp.auth import TokenManager; tm = TokenManager(); print('Accounts:', tm.list_accounts())"
-```
-
-### Check Cache
-
-```bash
-python -c "import asyncio; from gmail_mcp.cache import EmailCache; ec = EmailCache(); asyncio.run(ec.initialize()); asyncio.run(ec.get_stats()).then(print)"
-```
-
-### View Logs
-
-```bash
-tail -f logs/gmail_mcp.log
+│   └── profiles/
+├── config/                 # Config templates
+└── reports/                # Generated output
 ```
 
 ## Troubleshooting
 
-### Authentication Issues
+### "No OAuth2 credentials file found"
 
-**Problem**: "No credentials found"
-- Run `python scripts/setup_oauth.py` again
-- Check `.gwark/credentials/oauth2_credentials.json` exists
-- Verify file permissions
+- Run `gwark config init` to create the directory structure
+- Download credentials from Google Cloud Console
+- Save as `.gwark/credentials/oauth2_credentials.json`
 
-**Problem**: "Invalid credentials"
-- Token may have expired
-- Re-run OAuth2 setup
-- Check Google Cloud Console for API issues
+### "Token has been revoked or expired"
 
-### Permission Issues
+```bash
+gwark config auth remove gmail
+gwark config auth setup
+```
 
-**Problem**: "Insufficient permissions"
-- Verify OAuth2 scopes in config
-- Re-authenticate with correct scopes
-- Check Google Cloud Console OAuth consent screen
+### "insufficient_scope" Error
 
-### Cache Issues
+gwark auto-detects missing scopes and re-authenticates. If it persists:
 
-**Problem**: "Cache database locked"
-- Only one server instance can run at a time
-- Close other instances
-- Delete `data/cache/email_cache.db` and restart
+```bash
+# Remove the specific service token and retry
+gwark config auth remove people
+gwark email senders --name "test" --enrich
+```
 
-### API Quota Issues
+### "API has not been used in project"
 
-**Problem**: "Rate limit exceeded"
-- Reduce `RATE_LIMIT_PER_SECOND` in .env
-- Increase `DEFAULT_PAGE_SIZE` to fetch more per request
-- Enable caching to reduce API calls
+Enable the required API in Google Cloud Console:
+- Go to APIs & Services > Library
+- Search for the API mentioned in the error
+- Click Enable
+
+### Rate Limit Errors (429)
+
+gwark has built-in exponential backoff retry. If you hit limits frequently, reduce concurrency in `.gwark/config.yaml`.
 
 ## Next Steps
 
-- Read [API.md](API.md) for available tools
-- Check [ARCHITECTURE.md](ARCHITECTURE.md) for design details
-- Review [PERFORMANCE.md](PERFORMANCE.md) for optimization tips
-- See [examples/](../examples/) for usage examples
-
-## Getting Help
-
-- Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- Open an issue on GitHub
-- Join our discussions
+- [QUICKSTART.md](QUICKSTART.md) — Get running in 5 minutes
+- [OAUTH_SETUP.md](OAUTH_SETUP.md) — Detailed Google Cloud setup
+- [TRIAGE_WORKFLOW.md](TRIAGE_WORKFLOW.md) — AI-powered email triage

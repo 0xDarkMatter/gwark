@@ -1,101 +1,150 @@
-# Quick Start Guide - OAuth2 Setup
+# Quick Start Guide
+
+Get gwark running in 5 minutes.
 
 ## Prerequisites
-✓ Python dependencies installed
-✓ Gmail account
 
-## Google Cloud Console Setup (5 minutes)
+- Python 3.10+
+- Google account
+- Google Cloud project with OAuth2 credentials ([setup guide](OAUTH_SETUP.md))
 
-### 1. Create Google Cloud Project
-
-1. Go to: https://console.cloud.google.com/
-2. Click "Select a project" → "NEW PROJECT"
-3. Name: **Gmail MCP Server**
-4. Click "CREATE"
-
-### 2. Enable Gmail API
-
-1. In search bar, type "Gmail API"
-2. Click "Gmail API" → "ENABLE"
-3. Wait ~10 seconds for activation
-
-### 3. Configure OAuth Consent Screen
-
-1. Go to: APIs & Services → OAuth consent screen
-2. Select **"External"** user type → CREATE
-3. Fill in:
-   - App name: **Gmail MCP Server**
-   - User support email: **your email**
-   - Developer contact: **your email**
-4. Click "SAVE AND CONTINUE"
-
-#### Add Scopes:
-1. Click "ADD OR REMOVE SCOPES"
-2. Filter/search for these scopes:
-   - ✓ `.../auth/gmail.readonly` - View email messages and settings
-   - ✓ `.../auth/gmail.modify` - Read, compose, and send emails
-   - ✓ `.../auth/gmail.labels` - Manage labels
-3. Click "UPDATE" → "SAVE AND CONTINUE"
-
-#### Add Test Users:
-1. Click "ADD USERS"
-2. Enter your Gmail address
-3. Click "ADD" → "SAVE AND CONTINUE"
-4. Review summary → "BACK TO DASHBOARD"
-
-### 4. Create OAuth2 Credentials
-
-1. Go to: APIs & Services → Credentials
-2. Click "CREATE CREDENTIALS" → "OAuth client ID"
-3. Application type: **Desktop app**
-4. Name: **Gmail MCP Desktop Client**
-5. Click "CREATE"
-
-### 5. Download Credentials
-
-1. In the popup, click "DOWNLOAD JSON"
-2. Save file as: `E:\Projects\Coding\GmailMCP\config\oauth2_credentials.json`
-
-**Important:** This file contains secrets - never commit to git!
-
-## Next Step: Authenticate
-
-Once you have `.gwark/credentials/oauth2_credentials.json`, run:
+## Install
 
 ```bash
-python scripts/setup_oauth.py
+# Clone and install
+git clone https://github.com/yourusername/gwark.git
+cd gwark
+uv pip install -e .       # or: pip install -e .
 ```
 
-This will:
-1. Open your browser
-2. Ask you to sign in to Gmail
-3. Request permissions
-4. Save encrypted tokens locally
-
-## Test It!
+## Configure
 
 ```bash
-# Test connection
-python scripts/test_connection.py
+# Create config directory
+gwark config init
 
-# Search emails from grandprix.com.au
-python scripts/email_search.py --domain grandprix.com.au --days-back 180
+# Place your OAuth2 credentials file at:
+#   .gwark/credentials/oauth2_credentials.json
+
+# Authenticate (opens browser)
+gwark config auth setup
+
+# Verify
+gwark config auth test
 ```
 
-## Troubleshooting
+## Try It
 
-**"OAuth client was not found"**
-- Make sure credentials file is in `.gwark/credentials/oauth2_credentials.json`
-- Verify file is named exactly `oauth2_credentials.json`
+### Email
 
-**"Access blocked: This app's request is invalid"**
-- Add your email as a test user in OAuth consent screen
-- Make sure all 3 scopes are added
+```bash
+# Search emails from a domain
+gwark email search --domain example.com --days 30
 
-**"invalid_grant"**
-- Delete `.gwark/tokens/primary.token`
-- Re-run `python scripts/setup_oauth.py`
+# Find unique senders by name
+gwark email senders --name "smith" --days 365
 
-## Need Help?
+# Interactive email browser
+gwark email search --domain example.com -i
+```
 
-See detailed guide: `docs/OAUTH_SETUP.md`
+### Calendar
+
+```bash
+# Meetings from last 30 days
+gwark calendar meetings --days 30
+
+# Interactive calendar viewer
+gwark calendar meetings --days 60 -i
+```
+
+### Drive
+
+```bash
+# List files in a folder
+gwark drive ls "My Documents"
+
+# Search for files
+gwark drive search "quarterly report" --type docs
+```
+
+### Sheets
+
+```bash
+# List spreadsheets
+gwark sheets list
+
+# Read data with interactive grid
+gwark sheets read SPREADSHEET_ID -i
+
+# Create a pivot table
+gwark sheets pivot SPREADSHEET_ID -s "Data!A:E" -r "Category" -v "sum:Sales"
+```
+
+### Docs
+
+```bash
+# Create a doc from markdown
+gwark docs create "Meeting Notes" --file notes.md --open
+
+# Pipe from Claude Code
+claude "Write a project brief" | gwark docs create "Brief" -f -
+```
+
+### Slides
+
+```bash
+# Create a presentation from markdown
+gwark slides create "Q1 Review" --file slides.md --open
+```
+
+### Forms
+
+```bash
+# List forms and export responses
+gwark forms list
+gwark forms responses FORM_ID --format csv
+```
+
+## Output Formats
+
+All search commands support:
+
+```bash
+--format markdown   # Default — Rich tables
+--format json       # Structured data
+--format csv        # Spreadsheet-compatible
+```
+
+## Profiles
+
+Filter content for different contexts:
+
+```bash
+# Use work profile (excludes personal items)
+gwark email search --domain company.com --profile work
+gwark calendar meetings --profile work
+```
+
+Edit `.gwark/profiles/work.yaml` to customize filters.
+
+## AI Features
+
+For AI-powered summarization, set your Anthropic API key:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Summarize emails
+gwark email search --domain example.com --summarize
+
+# Summarize a document
+gwark docs summarize DOC_ID
+```
+
+## What's Next
+
+- Full command reference: see `gwark --help` and `gwark <command> --help`
+- Detailed setup: [SETUP.md](SETUP.md)
+- OAuth configuration: [OAUTH_SETUP.md](OAUTH_SETUP.md)
+- Email triage workflow: [TRIAGE_WORKFLOW.md](TRIAGE_WORKFLOW.md)

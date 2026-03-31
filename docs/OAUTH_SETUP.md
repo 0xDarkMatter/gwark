@@ -1,290 +1,252 @@
 # OAuth2 Setup Guide
 
-Step-by-step guide to setting up OAuth2 credentials for Gmail API access.
+Step-by-step guide to creating Google Cloud credentials for gwark.
 
 ## Overview
 
-The Gmail MCP server uses OAuth2 to authenticate with Gmail on behalf of the user. This guide walks through creating the necessary credentials in Google Cloud Console.
+gwark uses OAuth2 to access Google Workspace APIs on your behalf. You create credentials once in the Google Cloud Console, then gwark handles authentication and token refresh automatically.
 
 ## Step 1: Create a Google Cloud Project
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Click "Select a project" dropdown at the top
 3. Click "NEW PROJECT"
-4. Enter project name (e.g., "Gmail MCP Server")
+4. Enter project name (e.g., "gwark")
 5. Click "CREATE"
-6. Wait for the project to be created
-7. Select your new project from the dropdown
+6. Select your new project from the dropdown
 
-## Step 2: Enable Required APIs
+## Step 2: Enable APIs
 
-### Gmail API
+Navigate to **APIs & Services > Library** and enable these APIs:
 
-1. In the Google Cloud Console, navigate to "APIs & Services" > "Library"
-2. Search for "Gmail API"
-3. Click on "Gmail API"
-4. Click "ENABLE"
+### Required (core functionality)
 
-### People API (for Triage Workflow)
+| API | Used By |
+|-----|---------|
+| Gmail API | `gwark email` commands |
+| Google Calendar API | `gwark calendar` commands |
+| Google Drive API | `gwark drive` commands |
 
-1. Search for "People API"
-2. Click on "People API"
-3. Click "ENABLE"
+### Optional (enable as needed)
 
-This is required for sender quality signals in the triage workflow.
+| API | Used By |
+|-----|---------|
+| Google Docs API | `gwark docs` commands |
+| Google Sheets API | `gwark sheets` commands |
+| Google Slides API | `gwark slides` commands |
+| Google Forms API | `gwark forms` commands |
+| People API | `gwark email senders --enrich` (contact status) |
+
+Search for each API name, click it, then click **ENABLE**. You can always enable more later — gwark will tell you if an API needs to be enabled.
 
 ## Step 3: Configure OAuth Consent Screen
 
-1. Navigate to "APIs & Services" > "OAuth consent screen"
-2. Select "External" user type (unless you have a Google Workspace account)
+1. Navigate to **APIs & Services > OAuth consent screen**
+2. Select **External** user type (or Internal for Workspace accounts)
 3. Click "CREATE"
 
 ### App Information
 
-- **App name**: Gmail MCP Server
+- **App name**: gwark
 - **User support email**: Your email address
-- **Developer contact information**: Your email address
+- **Developer contact**: Your email address
 
 Click "SAVE AND CONTINUE"
 
 ### Scopes
 
-1. Click "ADD OR REMOVE SCOPES"
-2. Add the following scopes:
+Click "ADD OR REMOVE SCOPES" and add:
 
-   **Gmail API:**
-   - `https://www.googleapis.com/auth/gmail.readonly` - View email messages and settings
-   - `https://www.googleapis.com/auth/gmail.modify` - Read, compose, and send emails
-   - `https://www.googleapis.com/auth/gmail.labels` - Manage labels on emails
+**Core scopes** (always needed):
 
-   **People API (for triage workflow):**
-   - `https://www.googleapis.com/auth/contacts.readonly` - View My Contacts
-   - `https://www.googleapis.com/auth/contacts.other.readonly` - View Other Contacts (auto-saved)
+| Scope | Purpose |
+|-------|---------|
+| `gmail.readonly` | Read emails |
+| `calendar.readonly` | Read calendar events |
+| `drive` | Access Drive files |
 
-3. Click "UPDATE"
-4. Click "SAVE AND CONTINUE"
+**Additional scopes** (add if using those features):
+
+| Scope | Purpose |
+|-------|---------|
+| `documents` | Read/write Google Docs |
+| `spreadsheets` | Read/write Google Sheets |
+| `presentations` | Read/write Google Slides |
+| `forms.body` | Read/write Google Forms |
+| `forms.responses.readonly` | Read form responses |
+| `contacts.readonly` | Contact enrichment (`--enrich` flag) |
+| `contacts.other.readonly` | Other Contacts lookup |
+
+You don't need to add every scope now. gwark authenticates each service separately with its own token. When you first use a new command (e.g., `gwark sheets list`), gwark opens a browser to authorize that specific service.
+
+Click "UPDATE" then "SAVE AND CONTINUE"
 
 ### Test Users
 
 1. Click "ADD USERS"
-2. Enter your Gmail address
-3. Click "ADD"
-4. Click "SAVE AND CONTINUE"
-
-### Summary
-
-Review the summary and click "BACK TO DASHBOARD"
+2. Enter your Google account email
+3. Click "ADD" then "SAVE AND CONTINUE"
+4. Review summary, click "BACK TO DASHBOARD"
 
 ## Step 4: Create OAuth2 Credentials
 
-1. Navigate to "APIs & Services" > "Credentials"
-2. Click "CREATE CREDENTIALS" > "OAuth client ID"
-3. Select "Desktop app" as the application type
-4. Enter name: "Gmail MCP Desktop Client"
+1. Navigate to **APIs & Services > Credentials**
+2. Click **CREATE CREDENTIALS > OAuth client ID**
+3. Application type: **Desktop app**
+4. Name: "gwark" (or anything you like)
 5. Click "CREATE"
 
 ### Download Credentials
 
-1. A dialog will appear with your Client ID and Client Secret
-2. Click "DOWNLOAD JSON"
-3. Save the file as `oauth2_credentials.json`
-4. Move this file to `.gwark/credentials/oauth2_credentials.json` in your Gmail MCP project directory
+1. Click "DOWNLOAD JSON" in the popup
+2. Save the file to your gwark project:
 
-**Important**: Keep this file secure! It contains sensitive credentials.
+```bash
+# Create the directory if it doesn't exist
+gwark config init
 
-## Step 5: Verify Credentials File
+# Move the downloaded file
+mv ~/Downloads/client_secret_*.json .gwark/credentials/oauth2_credentials.json
+```
 
-Your `.gwark/credentials/oauth2_credentials.json` should look like this:
+**Important**: This file contains secrets — never commit it to git. It's already in `.gitignore`.
+
+## Step 5: Authenticate
+
+```bash
+# Initial authentication (opens browser)
+gwark config auth setup
+
+# This will:
+# 1. Open your browser
+# 2. Ask you to sign in with your Google account
+# 3. Request the Gmail API permissions
+# 4. Save tokens securely (OS keyring or encrypted file)
+```
+
+Other services authenticate on first use. For example, running `gwark calendar meetings` for the first time will open a browser to authorize Calendar access.
+
+## Step 6: Verify
+
+```bash
+# Test authentication
+gwark config auth test
+
+# List authenticated services
+gwark config auth list
+
+# Quick functional test
+gwark email search --domain gmail.com --days 1 --max-results 3
+```
+
+## Credential Verification
+
+Your `.gwark/credentials/oauth2_credentials.json` should look like:
 
 ```json
 {
   "installed": {
-    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "123456789-abc.apps.googleusercontent.com",
     "project_id": "your-project-id",
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_secret": "YOUR_CLIENT_SECRET",
-    "redirect_uris": [
-      "http://localhost",
-      "urn:ietf:wg:oauth:2.0:oob"
-    ]
+    "client_secret": "GOCSPX-...",
+    "redirect_uris": ["http://localhost"]
   }
 }
 ```
 
-## Step 6: Run OAuth2 Setup
+## Token Storage
 
-```bash
-# Run the setup script
-python scripts/setup_oauth.py
+gwark stores OAuth tokens using this priority:
 
-# Follow the prompts:
-# 1. A browser window will open
-# 2. Sign in with your Gmail account
-# 3. Grant the requested permissions
-# 4. The script will save your tokens
-```
+1. **OS Keyring** (primary) — encrypted by your OS
+2. **Legacy pickle files** (auto-migrated to keyring on first use)
 
-### Alternative: Manual Authorization
+Tokens auto-refresh when expired. You shouldn't need to re-authenticate unless you revoke access or change scopes.
 
-If the browser doesn't open automatically:
+### Scope Upgrades
 
-```bash
-python scripts/setup_oauth.py --manual
+gwark automatically detects when a stored token is missing required scopes. It will delete the old token and prompt for re-authentication with the correct scopes. No manual intervention needed.
 
-# This will:
-# 1. Display an authorization URL
-# 2. You copy and paste it into your browser
-# 3. After authorizing, you'll get an authorization code
-# 4. Paste the code back into the terminal
-```
+## Security
 
-## Step 7: Verify Authentication
+### Protecting Credentials
 
-```bash
-# Test the connection
-python scripts/test_connection.py
+| File | Contains | Gitignored |
+|------|----------|------------|
+| `.gwark/credentials/oauth2_credentials.json` | OAuth client secret | Yes |
+| `.gwark/tokens/` | Refresh tokens | Yes |
+| OS Keyring | Encrypted tokens | N/A (system) |
 
-# Expected output:
-# ✓ OAuth2 credentials loaded
-# ✓ Token is valid
-# ✓ Gmail API connection successful
-# ✓ Profile: your.email@gmail.com
-```
+### Revoking Access
 
-## Security Best Practices
-
-### Protect Your Credentials
-
-1. **Never commit credentials to version control**
-   - `.gwark/credentials/oauth2_credentials.json` is in `.gitignore`
-   - `.gwark/tokens/` is in `.gitignore`
-
-2. **File Permissions**
-   - The setup script automatically sets restrictive permissions
-   - Tokens are encrypted with Fernet
-
-3. **Token Storage**
-   - Tokens are stored in `.gwark/tokens/`
-   - Each account has a separate encrypted token file
-   - Refresh tokens allow automatic re-authentication
-
-### Revoke Access
-
-If you need to revoke access:
+If you need to revoke gwark's access:
 
 1. Go to [Google Account Permissions](https://myaccount.google.com/permissions)
-2. Find "Gmail MCP Server"
+2. Find your gwark app name
 3. Click "Remove Access"
-4. Delete local tokens: `rm -rf .gwark/tokens/*`
+4. Remove local tokens:
 
-## Scope Explanations
+```bash
+# Remove specific service
+gwark config auth remove gmail
 
-### Gmail Scopes
-
-#### gmail.readonly
-- Read email messages and metadata
-- Search emails
-- List labels
-- Cannot modify, delete, or send emails
-
-#### gmail.modify
-- All readonly permissions, plus:
-- Modify labels (mark read/unread, star, archive)
-- Move to trash
-- Cannot send new emails
-
-#### gmail.labels
-- Manage labels (create, update, delete)
-- Assign labels to messages
-
-### People API Scopes
-
-#### contacts.readonly
-- Read contacts from "My Contacts"
-- Used to identify known senders in triage workflow
-
-#### contacts.other.readonly
-- Read contacts from "Other Contacts"
-- These are auto-saved contacts from email interactions
-- Used to identify prior senders in triage workflow
+# Or remove all
+gwark config auth remove all
+```
 
 ## Publishing Your App (Optional)
 
-If you want to use this with multiple accounts without adding each as a test user:
+For personal use, keep the app in "Testing" mode — up to 100 test users.
 
-1. Navigate to "OAuth consent screen"
+To share with others without adding test users:
+
+1. Navigate to OAuth consent screen
 2. Click "PUBLISH APP"
-3. Submit for Google verification (if needed)
-4. Wait for approval (can take several days)
-
-**Note**: For personal use or small teams, keeping it in "Testing" mode is recommended.
+3. Complete Google's verification process (may take days)
 
 ## Troubleshooting
 
 ### "Access blocked: This app's request is invalid"
 
-**Cause**: OAuth consent screen not configured properly
-
-**Solution**:
-1. Verify all required fields in OAuth consent screen
-2. Ensure test users are added
-3. Check that all scopes are saved
+- Add your email as a test user in the OAuth consent screen
+- Verify the consent screen is fully configured (all required fields)
 
 ### "The OAuth client was not found"
 
-**Cause**: Incorrect credentials file or project ID
-
-**Solution**:
-1. Re-download credentials from Google Cloud Console
-2. Verify the file is named `oauth2_credentials.json`
-3. Check that it's in the `config/` directory
+- Re-download credentials from Google Cloud Console
+- Verify the file is at `.gwark/credentials/oauth2_credentials.json`
+- Check the file contains `"installed"` (not `"web"` — must be Desktop App type)
 
 ### "invalid_grant" Error
 
-**Cause**: Refresh token expired or revoked
+Token expired or revoked:
 
-**Solution**:
-1. Delete existing tokens: `rm .gwark/tokens/primary.token`
-2. Re-run setup: `python scripts/setup_oauth.py`
+```bash
+gwark config auth remove gmail
+gwark config auth setup
+```
 
 ### "insufficient_scope" Error
 
-**Cause**: Missing required scopes
-
-**Solution**:
-1. Go to OAuth consent screen in Google Cloud Console
-2. Add missing scopes
-3. Re-run OAuth setup
-4. User must re-authorize with new scopes
-
-## Multi-Account Setup
-
-### Add Additional Accounts
+gwark v0.3.0+ auto-detects and re-authenticates with the correct scopes. If this persists:
 
 ```bash
-# Setup with custom account ID
-python scripts/setup_oauth.py --account-id work
-
-# Setup another account
-python scripts/setup_oauth.py --account-id personal
+# Remove the token for the affected service and retry
+gwark config auth remove people
 ```
 
-### List Configured Accounts
+### "API has not been used in project"
 
-```bash
-python scripts/setup_oauth.py --list
-```
-
-### Remove an Account
-
-```bash
-python scripts/setup_oauth.py --remove personal
-```
+Enable the API in Google Cloud Console:
+1. Go to APIs & Services > Library
+2. Search for the API name from the error message
+3. Click Enable
+4. Wait 1-2 minutes for propagation
 
 ## Next Steps
 
-- Return to [SETUP.md](SETUP.md) to continue configuration
-- Read [API.md](API.md) for available operations
-- Check [examples/](../examples/) for usage examples
+- [QUICKSTART.md](QUICKSTART.md) — Start using gwark
+- [SETUP.md](SETUP.md) — Full configuration guide
