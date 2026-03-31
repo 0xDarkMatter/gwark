@@ -215,6 +215,18 @@ def get_google_service(
     return build(service_name, version, credentials=creds)
 
 
+def has_credentials(service_key: str) -> bool:
+    """Check if credentials exist for a service without triggering OAuth flow."""
+    store = get_credential_store()
+    creds = store.load_google_credentials(service_key)
+    if creds:
+        return True
+    # Check legacy pickle
+    gwark_dir = get_gwark_dir()
+    token_path = gwark_dir / "tokens" / f"{service_key}_token.pickle"
+    return token_path.exists()
+
+
 def get_calendar_service() -> Any:
     """Get authenticated Google Calendar API service."""
     scopes: List[str] = ["https://www.googleapis.com/auth/calendar.readonly"]
