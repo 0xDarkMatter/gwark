@@ -589,13 +589,15 @@ uvx black src/ tests/
 uvx ruff check src/ tests/
 ```
 
-## Recent Changes (v0.3.0)
+## Recent Changes (v0.3.5)
 
 - **Unique senders** — `gwark email senders` finds unique contacts by name, domain, or email with deduplication and optional Google Contacts enrichment
+- **API preflight check** — `gwark config auth test --all` checks every Google API with status table and enable URLs
+- **8 Claude Code skills** — focused skills for email, docs, drive, sheets, slides, forms, triage (replaces monolithic gwark-ops)
 - **OAuth scope validation** — auto-detects mismatched token scopes and re-authenticates
 - **Google Slides** — full presentation management (create, edit, export, interactive viewer)
 - **Drive file management** — mkdir, rename, move, copy, rm, share commands
-- **Error resilience** — exponential backoff retry across all API calls
+- **73 tests** — unit tests for core modules + CLI smoke tests
 
 See [CHANGELOG.md](CHANGELOG.md) for full history.
 

@@ -1,5 +1,5 @@
 ---
-name: gwark-playbook-triage
+name: gwark-triage
 description: "Email triage workflow: fetch, filter, classify, and report on inbox priority. Use when: reviewing inbox, catching up on email, email audit, priority analysis, post-holiday catchup. Triggers: email triage, inbox review, catchup, priority analysis, inbox zero, email audit."
 version: 1.0.0
 category: productivity

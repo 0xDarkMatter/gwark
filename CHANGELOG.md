@@ -3,6 +3,26 @@
 All notable changes to this tool are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/)
 
+## [0.3.5] - 2026-03-31
+
+### Added
+- 8 focused Claude Code skills replacing monolithic gwark-ops:
+  gwark-email, gwark-docs, gwark-drive, gwark-sheets, gwark-slides,
+  gwark-forms, gwark-triage, plus gwark-ops as lightweight router
+- Gmail query syntax reference (references/gmail-query-syntax.md)
+- Drive query syntax reference (references/drive-queries.md)
+- Doc editing patterns reference (references/editing-patterns.md)
+- 73 unit tests and CLI smoke tests
+
+### Changed
+- gwark-ops rewritten as router skill (~140 lines, was 324)
+- Calendar stays in gwark-ops (only 2 commands)
+
+### Removed
+- Monolithic gwark-ops skill (replaced by per-module skills)
+- Nested gwark-ops/gwark-ops duplicate
+- Legacy standalone scripts (replaced by CLI commands)
+
 ## [0.3.1] - 2026-03-31
 
 ### Added

@@ -87,11 +87,24 @@ python -m gwark email search --domain example.com --days 1 --max-results 3
 | Add sheets operation | `src/gwark/core/sheets_client.py` + `commands/sheets.py` |
 | Add Google API service | `src/gmail_mcp/auth/oauth.py` (add get_*_service function) |
 
-## Current Status
+## Current Status (v0.3.5)
 
-- **Working**: CLI, email search, config, forms, docs (v2 with section-aware editing), **sheets** (full CRUD + pivot tables), **drive** (full file management + sharing)
-- **Optimized**: Calendar (parallel multi-calendar fetching), Sheets (parallel range reads)
-- **Planned**: MCP server, summary caching
+- **Working**: All 9 command groups — email (search, senders, sent, summarize), calendar, drive (full CRUD + sharing), docs (section-aware editing, themes, AI review), sheets (pivot tables, gspread), slides, forms, config (preflight API check)
+- **Optimized**: Calendar (parallel multi-calendar fetching), Sheets (parallel range reads), Email (HTTP batch API)
+- **Skills**: 8 Claude Code skills in `.claude/skills/gwark-*/` — one per module plus triage playbook
+
+## Claude Code Skills
+
+| Skill | Module | Trigger |
+|-------|--------|---------|
+| `gwark-ops` | Setup, auth, config, calendar | "gwark setup", "gwark auth" |
+| `gwark-email` | Search, senders, sent, summarize | "email search", "find senders" |
+| `gwark-docs` | Create, edit, sections, themes, review | "create document", "edit doc" |
+| `gwark-drive` | ls, search, move, copy, share | "drive files", "file sharing" |
+| `gwark-sheets` | Read, write, pivot, export | "spreadsheet", "pivot table" |
+| `gwark-slides` | Create, edit, export presentations | "create slides", "presentation" |
+| `gwark-forms` | Create surveys, add questions, responses | "google forms", "survey" |
+| `gwark-triage` | Email triage workflow | "email triage", "inbox review" |
 
 ## Async Utilities
 
