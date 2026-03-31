@@ -59,7 +59,7 @@ def extract_email_address(email_string: str) -> str:
     if match:
         return match.group(0)
 
-    return email_string
+    return ""
 
 
 def get_email_body(payload: Dict[str, Any]) -> str:
