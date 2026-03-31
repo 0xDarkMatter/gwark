@@ -507,10 +507,27 @@ filters:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select existing
-3. Enable APIs: Gmail, Calendar, Drive, Forms, Docs, Sheets, **Slides**
+3. Enable the APIs you need (see table below)
 4. Create OAuth2 credentials (Desktop App)
 5. Download credentials JSON
 6. Save as `.gwark/credentials/oauth2_credentials.json`
+
+### Required APIs
+
+Enable these in **APIs & Services > Library** in your Google Cloud project:
+
+| API | gwark Commands | Enable URL |
+|-----|---------------|------------|
+| Gmail API | `email search`, `email senders`, `email sent` | [Enable](https://console.cloud.google.com/apis/library/gmail.googleapis.com) |
+| Google Calendar API | `calendar meetings` | [Enable](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com) |
+| Google Drive API | `drive ls`, `drive search`, `drive move`, etc. | [Enable](https://console.cloud.google.com/apis/library/drive.googleapis.com) |
+| Google Docs API | `docs create`, `docs edit`, `docs sections` | [Enable](https://console.cloud.google.com/apis/library/docs.googleapis.com) |
+| Google Sheets API | `sheets read`, `sheets write`, `sheets pivot` | [Enable](https://console.cloud.google.com/apis/library/sheets.googleapis.com) |
+| Google Slides API | `slides create`, `slides edit`, `slides export` | [Enable](https://console.cloud.google.com/apis/library/slides.googleapis.com) |
+| Google Forms API | `forms list`, `forms create`, `forms responses` | [Enable](https://console.cloud.google.com/apis/library/forms.googleapis.com) |
+| People API | `email senders --enrich` (optional) | [Enable](https://console.cloud.google.com/apis/library/people.googleapis.com) |
+
+You only need to enable the APIs for features you use. gwark authenticates each service separately on first use.
 
 See [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) for detailed instructions.
 
