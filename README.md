@@ -50,6 +50,7 @@ gwark config auth test
 gwark
 ├── email
 │   ├── search      Search emails by domain/sender/query (-i for interactive)
+│   ├── senders     Find unique senders by name/domain/email (--enrich for contacts)
 │   ├── sent        Analyze sent emails for a month
 │   └── summarize   AI summarize emails from JSON
 ├── calendar
@@ -147,6 +148,22 @@ gwark email search --query "has:attachment larger:5M" --days 60
 
 # Export to CSV
 gwark email search --sender john@example.com --format csv --max-results 100
+```
+
+### Unique Senders
+
+```bash
+# Find all unique senders matching a name
+gwark email senders --name "smith" --days 365
+
+# Search by domain with contact enrichment
+gwark email senders --domain example.com --enrich
+
+# Export unique contacts as CSV
+gwark email senders --name "jones" -f csv -o contacts.csv
+
+# Complex query (spelling variants)
+gwark email senders --query "from:nevill OR from:neville"
 ```
 
 ### Calendar
@@ -555,13 +572,15 @@ uvx black src/ tests/
 uvx ruff check src/ tests/
 ```
 
-## Roadmap
+## Recent Changes (v0.3.0)
 
-- [x] Interactive terminal viewers for email, calendar, drive, sheets
-- [x] Parallel fetching (email 50 threads, calendar multi-calendar, sheets batch)
-- [x] Google Sheets with pivot tables and auto-styling
-- [ ] Summary caching to avoid re-processing
-- [ ] Multi-account support
+- **Unique senders** — `gwark email senders` finds unique contacts by name, domain, or email with deduplication and optional Google Contacts enrichment
+- **OAuth scope validation** — auto-detects mismatched token scopes and re-authenticates
+- **Google Slides** — full presentation management (create, edit, export, interactive viewer)
+- **Drive file management** — mkdir, rename, move, copy, rm, share commands
+- **Error resilience** — exponential backoff retry across all API calls
+
+See [CHANGELOG.md](CHANGELOG.md) for full history.
 
 ## License
 
