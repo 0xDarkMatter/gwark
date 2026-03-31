@@ -133,7 +133,7 @@ def get_google_service(
     # Verify stored scopes cover requested scopes
     if creds and not _scopes_sufficient(creds, scopes):
         print(f"[INFO] Stored {svc_key} token missing required scopes")
-        print(f"[INFO] Re-authenticating to get required scopes...")
+        print("[INFO] Re-authenticating to get required scopes...")
         store.delete_google_credentials(svc_key)
         creds = None
         force_consent = True  # Must force consent to get new scopes
