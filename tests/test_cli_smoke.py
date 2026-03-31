@@ -29,7 +29,7 @@ class TestTopLevel:
 
     def test_version(self):
         r = run_gwark("--version")
-        assert "0.3.1" in r.stdout
+        assert "0.3.5" in r.stdout
 
 
 class TestEmailHelp:

@@ -35,7 +35,7 @@ For detailed usage, load the specific skill:
 | **Sheets** | `gwark-sheets` | Read/write data, pivot tables, export |
 | **Slides** | `gwark-slides` | Create/edit presentations from markdown |
 | **Forms** | `gwark-forms` | Create surveys, add questions, export responses |
-| **Triage** | `gwark-playbook-triage` | Email triage and priority classification |
+| **Triage** | `gwark-triage` | Email triage and priority classification |
 
 ## Calendar
 
