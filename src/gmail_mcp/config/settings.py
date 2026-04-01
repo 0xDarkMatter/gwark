@@ -1,4 +1,4 @@
-"""Configuration settings for Gmail MCP server."""
+"""Configuration settings for Gwark server."""
 
 import os
 from pathlib import Path
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     )
 
     # Server Configuration
-    server_name: str = Field(default="Gmail MCP Server", description="Server name")
+    server_name: str = Field(default="Gwark Server", description="Server name")
     server_version: str = Field(default="0.1.0", description="Server version")
     log_level: str = Field(default="INFO", description="Logging level")
 

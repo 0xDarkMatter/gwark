@@ -1,4 +1,4 @@
-"""AI/ML utilities for Gmail MCP."""
+"""AI/ML utilities for Gwark."""
 
 from gmail_mcp.ai.summarizer import batch_summarize_emails
 from gmail_mcp.ai.classifier import (

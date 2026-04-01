@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class GmailToolHandlers:
-    """Handlers for Gmail MCP tools."""
+    """Handlers for Gwark tools."""
 
     def __init__(self):
         """Initialize tool handlers."""

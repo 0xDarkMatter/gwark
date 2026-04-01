@@ -1,1 +1,1 @@
-"""Test suite for Gmail MCP server."""
+"""Test suite for Gwark."""

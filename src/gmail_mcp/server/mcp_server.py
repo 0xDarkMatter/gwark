@@ -1,4 +1,4 @@
-"""Gmail MCP Server implementation."""
+"""Gwark Server implementation."""
 
 import asyncio
 import logging
@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 class GmailMCPServer:
-    """Gmail MCP Server for Model Context Protocol."""
+    """Gwark Server for Model Context Protocol."""
 
     def __init__(self):
-        """Initialize Gmail MCP server."""
+        """Initialize Gwark server."""
         self.settings = get_settings()
         self.server = Server(self.settings.server_name)
         self.handlers = GmailToolHandlers()
@@ -27,7 +27,7 @@ class GmailMCPServer:
         # Register tools
         self._register_tools()
 
-        logger.info(f"Gmail MCP Server initialized: {self.settings.server_name}")
+        logger.info(f"Gwark Server initialized: {self.settings.server_name}")
 
     def _register_tools(self) -> None:
         """Register all MCP tools."""
@@ -378,7 +378,7 @@ class GmailMCPServer:
 
     async def run(self) -> None:
         """Run the MCP server."""
-        logger.info("Starting Gmail MCP Server...")
+        logger.info("Starting Gwark Server...")
 
         try:
             async with stdio_server() as (read_stream, write_stream):
@@ -396,13 +396,13 @@ class GmailMCPServer:
 
     async def cleanup(self) -> None:
         """Cleanup server resources."""
-        logger.info("Cleaning up Gmail MCP Server...")
+        logger.info("Cleaning up Gwark Server...")
         await self.handlers.cleanup()
-        logger.info("Gmail MCP Server stopped")
+        logger.info("Gwark Server stopped")
 
 
 async def main() -> None:
-    """Main entry point for Gmail MCP server."""
+    """Main entry point for Gwark server."""
     # Setup logging
     setup_logging()
 

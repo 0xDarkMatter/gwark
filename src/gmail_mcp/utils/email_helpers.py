@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Email utility functions for Gmail MCP."""
+"""Email utility functions for Gwark."""
 
 from typing import Optional
 

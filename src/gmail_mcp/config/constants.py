@@ -1,4 +1,4 @@
-"""Constants for Gmail MCP server."""
+"""Constants for Gwark server."""
 
 from typing import Final
 
