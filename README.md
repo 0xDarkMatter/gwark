@@ -24,7 +24,7 @@ claude "Write Q1 report" | gwark docs create "Q1 Report" -f - --open
 gwark forms responses FORM_ID -f csv | gwark sheets write SHEET_ID -f -
 ```
 
-Includes 8 Claude Code skills (`.claude/skills/gwark-*/`) for automatic context loading when working with Google Workspace tasks.
+Includes 8 Claude Code skills (`skills/gwark-*/`) for automatic context loading when working with Google Workspace tasks.
 
 ## What it does
 
