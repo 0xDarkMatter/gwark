@@ -5,25 +5,22 @@
 [![Rich](https://img.shields.io/badge/Rich-Terminal%20UI-green.svg)](https://rich.readthedocs.io/)
 [![Anthropic](https://img.shields.io/badge/AI-Claude%20Haiku-orange.svg)](https://anthropic.com/)
 
-**Your inbox, calendar, and drive — tamed from the terminal.**
+A command-line tool for Google Workspace. Search emails, browse calendars, manage Drive files, create documents, build spreadsheets, and more — all from the terminal.
 
-Ever tried to find that one email from six months ago? The one with the attachment? From someone whose name you *almost* remember? Yeah, Gmail search isn't it.
+I built this because I spend a lot of time in Google Workspace and wanted something scriptable. The web UI is fine for one-off tasks, but when you need to search 6 months of emails, pull meeting data into a report, or batch-process form responses, a CLI is just faster.
 
-gwark is the command-line power tool Google Workspace desperately needed. Search thousands of emails in seconds with actual query syntax, not whatever algorithm Google thinks you meant. Get AI-powered summaries that cut through corporate reply-all chains. Browse your calendar without opening seventeen Chrome tabs. Create pivot tables without clicking through endless menus. Export everything to formats that actually work with other tools.
+## What it does
 
-Built for devs, PMs, and anyone else who's sick of clicking through UI to answer "what did I even work on last quarter?" Your terminal is faster than your browser — let's use it.
-
-Think of it as `git` for your Google stuff: composable commands, scriptable workflows, and zero mouse required. Pipe Claude's output directly into Docs. Batch-process form responses. Turn meeting data into reports. This is productivity tooling that respects your time and your keyboard.
-
-## Why gwark?
-
-- **Blazing Fast Email Search** — Query by domain, sender, or raw Gmail syntax. Export to markdown, JSON, or CSV. Done.
-- **Interactive Terminal Viewers** — Browse emails, calendar, and drive with keyboard navigation. No browser needed.
-- **AI Summaries That Don't Suck** — Claude Haiku distills email threads into bullet points you'll actually read
-- **Calendar Forensics** — Pull meeting history, filter out the noise, see where your time *really* went
-- **Drive Activity Tracking** — What changed? When? Finally, answers.
-- **Work/Life Separation** — Profile system filters out personal stuff when you need to focus (or vice versa)
-- **Google Workspace Native** — Built for business accounts with 250 req/sec throughput
+- **Email** — Search by domain/sender/query, find unique contacts, AI summaries
+- **Calendar** — Multi-calendar meeting history, work-only filtering
+- **Drive** — List, search, move, copy, share files and folders
+- **Docs** — Create from markdown, section-aware editing, themes, AI review
+- **Sheets** — Read/write data, pivot tables with auto-styling, CSV/JSON export
+- **Slides** — Create presentations from markdown, edit, export
+- **Forms** — Create surveys, add questions, export responses
+- **Interactive viewers** — Browse emails, calendar, sheets, and slides with keyboard navigation
+- **Profiles** — Filter out personal/work content depending on context
+- **Pipeable** — JSON/CSV/markdown output, stdin support, works with other tools
 
 ## Quick Start
 
