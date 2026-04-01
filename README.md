@@ -7,8 +7,10 @@
  ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
 ```
 
+[![GitHub release](https://img.shields.io/github/v/release/0xDarkMatter/gwark)](https://github.com/0xDarkMatter/gwark/releases)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen.svg)](tests/)
 [![Rich](https://img.shields.io/badge/Rich-Terminal%20UI-green.svg)](https://rich.readthedocs.io/)
 [![Anthropic](https://img.shields.io/badge/AI-Claude-orange.svg)](https://anthropic.com/)
 
