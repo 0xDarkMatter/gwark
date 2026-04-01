@@ -1,26 +1,41 @@
-# gwark
+```
+ ██████╗ ██╗    ██╗ █████╗ ██████╗ ██╗  ██╗
+██╔════╝ ██║    ██║██╔══██╗██╔══██╗██║ ██╔╝
+██║  ███╗██║ █╗ ██║███████║██████╔╝█████╔╝
+██║   ██║██║███╗██║██╔══██║██╔══██╗██╔═██╗
+╚██████╔╝╚███╔███╔╝██║  ██║██║  ██║██║  ██╗
+ ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
+```
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rich](https://img.shields.io/badge/Rich-Terminal%20UI-green.svg)](https://rich.readthedocs.io/)
-[![Anthropic](https://img.shields.io/badge/AI-Claude%20Haiku-orange.svg)](https://anthropic.com/)
 
-A command-line tool for Google Workspace. Search emails, browse calendars, manage Drive files, create documents, build spreadsheets, and more — all from the terminal.
+Google Workspace from the command line. Built for agentic workflows and Claude Code integration.
 
-I built this because I spend a lot of time in Google Workspace and wanted something scriptable. The web UI is fine for one-off tasks, but when you need to search 6 months of emails, pull meeting data into a report, or batch-process form responses, a CLI is just faster.
+gwark gives AI agents and power users direct access to Gmail, Calendar, Drive, Docs, Sheets, Slides, and Forms through composable CLI commands. Every command outputs structured data (JSON, CSV, markdown), accepts stdin, and can be piped into other tools — making it a natural fit for AI-assisted workflows where an agent needs to search emails, create documents, or analyze data without touching a browser.
+
+```bash
+# Claude Code can search your email, find contacts, create docs
+gwark email senders --name "smith" --enrich
+gwark email search --domain client.com --days 90 --summarize
+claude "Write Q1 report" | gwark docs create "Q1 Report" -f - --open
+gwark forms responses FORM_ID -f csv | gwark sheets write SHEET_ID -f -
+```
+
+Includes 8 Claude Code skills (`.claude/skills/gwark-*/`) for automatic context loading when working with Google Workspace tasks.
 
 ## What it does
 
-- **Email** — Search by domain/sender/query, find unique contacts, AI summaries
-- **Calendar** — Multi-calendar meeting history, work-only filtering
-- **Drive** — List, search, move, copy, share files and folders
-- **Docs** — Create from markdown, section-aware editing, themes, AI review
-- **Sheets** — Read/write data, pivot tables with auto-styling, CSV/JSON export
+- **Email** — Search, find unique senders with contact enrichment, AI summaries, sent analysis
+- **Calendar** — Multi-calendar meeting history with parallel fetching, work-only filtering
+- **Drive** — Full file management: list, search, move, copy, share, activity tracking
+- **Docs** — Create from markdown, section-aware editing, themes, comments, AI editorial review
+- **Sheets** — Read/write via gspread, pivot tables with auto-styling, CSV/JSON export
 - **Slides** — Create presentations from markdown, edit, export
 - **Forms** — Create surveys, add questions, export responses
-- **Interactive viewers** — Browse emails, calendar, sheets, and slides with keyboard navigation
-- **Profiles** — Filter out personal/work content depending on context
-- **Pipeable** — JSON/CSV/markdown output, stdin support, works with other tools
+- **Interactive viewers** — Terminal UI for emails, calendar, sheets, and slides
+- **Profiles** — Filter work/personal content per context
+- **API preflight** — `gwark config auth test --all` checks every Google API before you start
 
 ## Quick Start
 
