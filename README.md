@@ -14,19 +14,19 @@
 [![Rich](https://img.shields.io/badge/Rich-Terminal%20UI-green.svg)](https://rich.readthedocs.io/)
 [![Anthropic](https://img.shields.io/badge/AI-Claude-orange.svg)](https://anthropic.com/)
 
-Google Workspace from the command line. Built for agentic workflows and Claude Code integration.
+Google Workspace from the command line. Built for agentic workflows.
 
 gwark gives AI agents and power users direct access to Gmail, Calendar, Drive, Docs, Sheets, Slides, and Forms through composable CLI commands. Every command outputs structured data (JSON, CSV, markdown), accepts stdin, and can be piped into other tools — making it a natural fit for AI-assisted workflows where an agent needs to search emails, create documents, or analyze data without touching a browser.
 
 ```bash
-# Claude Code can search your email, find contacts, create docs
+# Agents can search your email, find contacts, create docs
 gwark email senders --name "smith" --enrich
 gwark email search --domain client.com --days 90 --summarize
 claude "Write Q1 report" | gwark docs create "Q1 Report" -f - --open
 gwark forms responses FORM_ID -f csv | gwark sheets write SHEET_ID -f -
 ```
 
-Includes 8 Claude Code skills (`skills/gwark-*/`) for automatic context loading when working with Google Workspace tasks.
+Includes 8 agent skills (`skills/gwark-*/`) for automatic context loading — works with Claude Code, OpenCode, Codex, or any coding agent that reads markdown skill files.
 
 ## What it does
 
