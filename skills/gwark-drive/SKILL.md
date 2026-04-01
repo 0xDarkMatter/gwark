@@ -2,7 +2,8 @@
 name: gwark-drive
 description: "Google Drive file operations with gwark: list, search, move, copy, share, activity. Use when: browsing files, searching Drive, managing permissions, moving or copying files, folder operations. Triggers: google drive, drive files, file sharing, drive search, move files, drive activity, list files, copy files, drive permissions."
 version: 1.0.0
-category: productivity
+tool: gwark
+category: domain
 requires:
   bins: ["gwark"]
 allowed-tools: "Read Bash Grep Glob"

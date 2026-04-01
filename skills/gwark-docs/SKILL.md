@@ -2,7 +2,8 @@
 name: gwark-docs
 description: "Google Docs operations with gwark: create from markdown, section editing, themes, AI review. Use when: creating documents, editing doc content, applying themes, managing comments, editorial review. Triggers: google docs, create document, edit doc, doc theme, doc review, markdown to docs, document sections."
 version: 1.0.0
-category: productivity
+tool: gwark
+category: domain
 requires:
   bins: ["gwark"]
 allowed-tools: "Read Bash Grep Glob"

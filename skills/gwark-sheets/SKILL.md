@@ -2,7 +2,8 @@
 name: gwark-sheets
 description: "Google Sheets operations with gwark via gspread: read, write, pivot tables, export. Use when: reading spreadsheet data, writing CSV/JSON, creating pivot tables, exporting sheets, interactive grid. Triggers: google sheets, spreadsheet, read sheet, write data, pivot table, export csv, sheet data, gspread."
 version: 1.0.0
-category: productivity
+tool: gwark
+category: domain
 requires:
   bins: ["gwark"]
 allowed-tools: "Read Bash Grep Glob"
