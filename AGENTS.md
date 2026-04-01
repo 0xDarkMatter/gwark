@@ -91,7 +91,7 @@ python -m gwark email search --domain example.com --days 1 --max-results 3
 
 - **Working**: All 9 command groups — email (search, senders, sent, summarize), calendar, drive (full CRUD + sharing), docs (section-aware editing, themes, AI review), sheets (pivot tables, gspread), slides, forms, config (preflight API check)
 - **Optimized**: Calendar (parallel multi-calendar fetching), Sheets (parallel range reads), Email (HTTP batch API)
-- **Skills**: 8 Claude Code skills in `.claude/skills/gwark-*/` — one per module plus triage playbook
+- **Skills**: 8 Claude Code skills in `skills/gwark-*/` — one per module plus triage playbook
 
 ## Claude Code Skills
 
