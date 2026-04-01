@@ -2,7 +2,8 @@
 name: gwark-ops
 description: "Google Workspace CLI setup, authentication, configuration, and module routing. Use for: initial setup, OAuth, config, profiles, calendar, or when unsure which gwark module to use. Triggers: gwark, google workspace cli, gwark config, gwark auth, gwark setup, gwark calendar, calendar meetings."
 version: 1.0.0
-category: productivity
+tool: gwark
+category: operations
 requires:
   bins: ["gwark"]
 allowed-tools: "Read Bash Grep Glob"

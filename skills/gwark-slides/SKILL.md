@@ -2,7 +2,8 @@
 name: gwark-slides
 description: "Google Slides operations with gwark: create, edit, export presentations. Use when: creating presentations from markdown, adding slides, exporting to PDF/markdown, editing slide content. Triggers: google slides, presentation, create slides, export slides, add slide, slide deck."
 version: 1.0.0
-category: productivity
+tool: gwark
+category: domain
 requires:
   bins: ["gwark"]
 allowed-tools: "Read Bash Grep Glob"

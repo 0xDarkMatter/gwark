@@ -2,7 +2,8 @@
 name: gwark-forms
 description: "Google Forms operations with gwark: create surveys, add questions, export responses. Use when: creating forms, adding questions, analyzing responses, building quizzes. Triggers: google forms, survey, form responses, create form, add question, quiz, form results."
 version: 1.0.0
-category: productivity
+tool: gwark
+category: domain
 requires:
   bins: ["gwark"]
 allowed-tools: "Read Bash Grep Glob"

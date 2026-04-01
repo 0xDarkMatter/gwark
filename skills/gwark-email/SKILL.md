@@ -2,7 +2,8 @@
 name: gwark-email
 description: "Gmail operations with gwark: search, sender analysis, sent tracking, AI summaries. Use when: searching emails, analyzing senders, reviewing sent mail, summarizing threads. Triggers: email search, gmail, search emails, sender analysis, email summary, inbox, find emails, unique senders."
 version: 1.0.0
-category: productivity
+tool: gwark
+category: domain
 requires:
   bins: ["gwark"]
 allowed-tools: "Read Bash Grep Glob"
